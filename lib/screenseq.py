@@ -9,7 +9,16 @@ from lib import createoutput
 
 
 def chopseq(seq, window, step):
-    """Moving window to chop target sequence"""
+    """Moving window to chop target sequence
+    
+    Args:
+        seq (str): sequence
+        window (int): window size
+        step (int): step size
+    
+    Returns:
+        seqChopped (list): list of chopped sequences
+    """
     seqChopped = []
     while len(seq) >= window:
         seqChopped.append(seq[0:window])

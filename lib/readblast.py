@@ -30,24 +30,19 @@ def readblastout(file, armlength, variants):
             noblast = False
             if specific:
                 # scores = []
-                if not ("XR" in line or "XM" in line):  # skip all predicted transcripts
-                    if "|" in line:
-                        columns = line.split("|")
+                if not ('XR' in line or 'XM' in line):  # skip all predicted transcripts
+                    if '|' in line:
+                        columns = line.split('|')
                         if len(columns) <= 3:
-                            hit = columns[1].split(".", 1)[0]
-                            # if columns[1][:2] == 'NM' or columns[1][:2] == 'NR':    # check if the hit is transcript (NM) or non-coding RNA (NR), remove all predicted (XM)
-                            scores = columns[-1].split(",")
+                            hit = columns[1].split('.', 1)[0]
+                            scores = columns[-1].split(',')
                         else:
-                            hit = columns[3].split(".", 1)[0]
-                            # if columns[3][:2] == 'NM' or columns[3][:2] == 'NR':
-                            scores = columns[-1].split(",")
-
+                            hit = columns[3].split('.', 1)[0]
+                            scores = columns[-1].split(',')
                     else:
-                        columns = line.split(",")
-                        # if columns[1][:2] == 'NM' or columns[1][:2] == 'NR':
-                        hit = columns[1].split(".", 1)[0]
+                        columns = line.split(',')
+                        hit = columns[1].split('.', 1)[0]
                         scores = columns[2:]
-
                     if len(scores):
                         # remove the first empty column (somehow appears in some db and blast versions)
                         if "" in scores:
@@ -93,10 +88,8 @@ def readblastout(file, armlength, variants):
                 funmap.write(seq[1])
                 notmapped.append(int(file[:-10].split('_')[-1])-1)
 
-    # if no blast results returned, ignore the sequence (can be due to error in blast+ or due to no similar sequence)
     if noblast:
         specific = False
-
     return specific
 
 
@@ -128,15 +121,13 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
             notmapped = []
             blast_bw = []
             for j, target in enumerate(sites):
-                fblast = fname + "_" + str(j + 1) + "_blast.txt"
-                blast_bw.append(readblastout(fblast, armlength, accession[i]))
+                fblast = fname + '_' + str(j + 1) + '_blast.txt'
+                blast_bw.append(readblastout(fblast, armlength, accession[i], notmapped, funmap))
 
-            # find sequences that are specific enough
             idxspecific = np.nonzero(blast_bw)[0]
             tempCandidates = np.array(sites)
             sitespecific = tempCandidates[idxspecific]
 
-            # write unmappable sites
             notmapped = tempCandidates[notmapped]
             recorded = False
             for j, nomap in enumerate(notmapped):
@@ -160,12 +151,9 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
                 temp = nomap
             notMapped.append(notmapped)
 
-            # continuous regions
             if len(sitespecific):
                 idxPairStart = np.nonzero(sitespecific[1:] - sitespecific[0:-1] != 1)[0]
-                if len(idxPairStart) == 0 and len(
-                    sitespecific
-                ):  # only one continuous region exists
+                if len(idxPairStart) == 0 and len(sitespecific):
                     idxPairStart = np.array([0])
                     idxPairEnd = np.array([len(sitespecific) - 1])
                 else:
@@ -188,8 +176,7 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
                 sitePairEnd = sitespecific[idxPairEnd]
                 sitePairEnd[-1] = sitespecific[-1]
                 siteCandidates.append(np.vstack((sitePairStart, sitePairEnd)))
-
-            else:  # no usable fragment
+            else:
                 siteCandidates.append(np.zeros((2, 0)))
             funmap.write("\n\n")
     return siteCandidates, notMapped

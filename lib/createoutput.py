@@ -39,8 +39,18 @@ def blastinfilename(dirname, filename):
         filename = os.path.join(dirname, filename + "_target")  # first 20 characters
     return filename
 
-
+# (designinput, siteCandidates, Tm, designpars[1], outpars, '3.AllSpecificTargets_')
 def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
+    """ Write file with target sequence, Tm and start position
+    
+    Args:
+        designinput (list): list of design input
+        sites (list): list of sites
+        Tm (list): list of Tm
+        armlength (int): arm length
+        dirnames (list): list of directory names
+        fname (str): file name
+    """
     t = dirnames[1].split("TempFolder")[1]
     headers = designinput[1]
     sequences = designinput[2]

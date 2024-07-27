@@ -102,10 +102,13 @@ def fastadb(indir, filenum, filename, name):
 
 
 def blastdb(species):
-    """Format fasta sequences to BLAST database"""
+    """ Format fasta sequences to BLAST database
+    Args:
+        species (str): species name
+    """
     fastadir = (config.fastadir_mouse, config.fastadir_human)
     nfiles = (config.fasta_filenum_mouse, config.fasta_filenum_human)
-    filename = (config.fasta_pre_suffix_mouose, config.fasta_pre_suffix_human)
+    filename = (config.fasta_pre_suffix_mouse, config.fasta_pre_suffix_human)
 
     if species == "mouse":
         s = 0

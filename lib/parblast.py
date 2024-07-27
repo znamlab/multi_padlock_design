@@ -5,6 +5,7 @@
 import os
 import subprocess
 import config
+from tqdm import tqdm
 from lib import createoutput
 
 
@@ -69,6 +70,14 @@ def runningblast():
 
 
 def continueblast(listSiteChopped, headers, dirname, designpars):
+    """Run blastn for the chopped sequences in parallel
+    Args:
+        listSiteChopped (list): list of chopped sequences
+        headers (list): list of headers
+        dirname (str): directory name
+        designpars (list): list of design parameters
+    
+    """
     global Processes
     global NextProcess
     global sites
@@ -80,8 +89,8 @@ def continueblast(listSiteChopped, headers, dirname, designpars):
     elif designpars[0] == "human":
         species = 1
 
-    print("Starting blast..")
-    for i, sites in enumerate(listSiteChopped):
+    print ("Starting blast..")
+    for i, sites in tqdm(enumerate(listSiteChopped)):
         print(headers[i])
         NextProcess = 0
         fname = createoutput.blastinfilename(dirname, headers[i])

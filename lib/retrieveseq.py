@@ -22,7 +22,7 @@ def loaddb(species):
 
     fastadir = (config.fastadir_mouse, config.fastadir_human)
     fasta_filenum = (config.fasta_filenum_mouse, config.fasta_filenum_human)
-    fasta_pre_suffix = (config.fasta_pre_suffix_mouose, config.fasta_pre_suffix_human)
+    fasta_pre_suffix = (config.fasta_pre_suffix_mouse, config.fasta_pre_suffix_human)
 
     if species == "mouse":
         s = 0
