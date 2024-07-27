@@ -5,6 +5,7 @@ import os
 from lib import readfastafile
 from lib import retrieveseq
 from lib import createoutput
+from pathlib import Path
 
 
 def correctinput(string):
@@ -63,15 +64,21 @@ def makeoutputdir(outdir):
     """Create output directory"""
     success = False
     try:
-        os.mkdir(outdir)
+        # os.mkdir(outdir) Causes Disk Quota Error 122
+        Path(outdir).mkdir(exist_ok=True)
         success = True
+    except FileExistsError as e:
+        if "Errno 17" in str(e):
+            print("Directory already existing.")
+            success = True
     except WindowsError as e:
         if "Error 183" in str(e):  # already existing
             print("Directory already existing.")
             success = True
         elif "Error 3" in str(e):  # directory does not exist
             try:
-                os.makedirs(outdir)  # create subdirectories
+                Path(outdir).mkdir(parents = True, exist_ok=True)
+                #os.makedirs(outdir)  # create subdirectories
                 success = True
             except:  # catch all exceptions
                 print("Could not create output directory. Try again.")
@@ -119,7 +126,17 @@ def nprobes(n):
 
 
 def getdesigninput():
-    """Check all keyboard inputs and format target sequences"""
+    """Get keyboard inputs for probe design
+
+    Returns:
+        tuple: (
+            design_input (str, int, int, int, int, str): species, arm length, interval, Tm thresholds, number of probes per gene,
+            output parameters (str, str): output directory, temporary output directory,
+            gene parameters (list, list, list, list): gene acronyms, linkers, headers, variants,
+            design input (list, list, list, list): base positions, headers with positions, sequences, variants matching sequences
+        )
+
+    """
     success_s = False  # species
     success_g = False  # gene acronyms
     success_f = False  # fasta file
@@ -170,6 +187,7 @@ def getdesigninput():
             for header in headers:
                 for i in toavoid:
                     header = header.replace(i, "")
+                header = header.replace(",", "-")
                 genes.append(header)
                 linkers.append([])
                 variants.append([])
