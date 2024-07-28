@@ -4,17 +4,25 @@
 #SBATCH --cpus-per-task=1
 #SBATCH --time=1:00:00
 #SBATCH --mem=8G
-#SBATCH --partition=cpu
+#SBATCH --partition=ncpu
 #SBATCH --mail-type=ALL
 #SBATCH --mail-user=alexander.becalick@crick.ac.uk
 
+# Check if the input parameter is provided
+if [ -z "$1" ]; then
+  echo "Usage: $0 <input>"
+  exit 1
+fi
+
+csv_folder=$1
 
 #tmux
 sleep 3
-cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/taar_genes/
+mkdir -p /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/${csv_folder}/
+cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/${csv_folder}/
 
-for f in *.fasta
+for file in *.csv
 do
- 	echo Starting job "$f"
-	sbatch --export=INPUT="$f" /nemo/lab/znamenskiyp/home/users/becalia/code/SBATCH/probe_design.sh --output=/nemo/lab/znamenskiyp/home/users/becalia/logs/taar_genes_"$f".out
+  echo "Starting job $file"
+  sbatch --export=INPUT="$file",PARENT="$csv_folder" --output=/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${csv_folder}/${csv_folder}_"${file%.csv}".out /nemo/lab/znamenskiyp/home/users/becalia/code/SBATCH/probe_design.sh
 done
