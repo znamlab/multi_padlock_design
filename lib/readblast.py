@@ -47,6 +47,40 @@ def readblastout(file, armlength, variants):
                         # remove the first empty column (somehow appears in some db and blast versions)
                         if "" in scores:
                             scores.remove("")
+                        # if more than 50% coverage, 80% homology, and non-target sequence covers ligation site +- 5
+                        if (
+                            armlength < int(scores[1])
+                            and float(scores[0]) > 80
+                            and int(scores[4]) < armlength - 4
+                            and int(scores[5]) > armlength + 5
+                        ):
+                            # First check if variants are provided
+                            if len(variants):
+                                # If they are and the hit is not in them, this is a non specific hit
+                                if hit not in variants:
+                                    if isinstance(variants, list):
+                                        with open(os.path.join(os.path.dirname(file), 'homology.txt'), 'a') as fsimilar:
+                                                fsimilar.write('%s,%s\n' % (hit, variants[0]))
+                                    else:
+                                        with open(os.path.join(os.path.dirname(file), 'homology.txt'), 'a') as fsimilar:
+                                                fsimilar.write('%s,%s\n' % (hit, variants))
+                                    specific = False
+                                # Otherwise, the hit is specific
+                                else:
+                                    # And if it's a perfect match mark it as mappable
+                                    if float(scores[0]) == 100 and int(scores[1]) == 2*armlength:
+                                        mappable = True
+                            # If no variants are provided, check if the hit is the same as the input sequence
+                            else:
+                                import warnings
+                                warnings.warn('No gene variants searched for due to providing fasta input, \
+                                            only checking if blast hits are the same as the input sequence')
+                                if hit not in file.split('/')[-1]:
+                                    specific = False
+                                else:
+                                    if float(scores[0]) == 100 and int(scores[1]) == 2*armlength:
+                                        mappable = True
+        # unmappable sequences will later be removed from final results
         if not mappable:
             with open(file[0:-10] + '.fasta', 'r') as f:
                 seq = f.readlines()
@@ -153,4 +187,3 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
                 siteCandidates.append(np.zeros((2, 0)))
             funmap.write("\n\n")
     return siteCandidates, notMapped
-
