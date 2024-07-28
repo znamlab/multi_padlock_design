@@ -1,0 +1,13 @@
+**/.idea/
+**.pyc
+config.py
+*.fasta
+*.csv
+*.txt
+*xlsx
+**/refseq/
+**/data/
+**/.vscode/
+*.ipynb
+*.dnd
+*.aln
