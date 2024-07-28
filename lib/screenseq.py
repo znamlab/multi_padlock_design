@@ -9,7 +9,16 @@ from lib import createoutput
 
 
 def chopseq(seq, window, step):
-    """Moving window to chop target sequence"""
+    """Moving window to chop target sequence
+    
+    Args:
+        seq (str): sequence
+        window (int): window size
+        step (int): step size
+    
+    Returns:
+        seqChopped (list): list of chopped sequences
+    """
     seqChopped = []
     while len(seq) >= window:
         seqChopped.append(seq[0:window])
@@ -19,6 +28,9 @@ def chopseq(seq, window, step):
 
 def calculatetm(seq):
     """Calculate Tm of a target candidate, nearest neighbor model"""
+    # If seq failed to pass noHomo_listSeq filter, return -99 so seq can be skipped
+    if seq is None:
+        return -99
     NNlist = chopseq(seq, 2, 1)
     NNtable = [
         "AA",
@@ -125,6 +137,9 @@ def runscreen(argin):
             and "TTTTT" not in target
         ):
             noHomo_listSeq.append(target)
+        # Otherwise insert None to keep the index consistent
+        else:
+            noHomo_listSeq.append(None) 
 
     for j, seqChopped in enumerate(noHomo_listSeq):
         tm = calculatetm(seqChopped)
@@ -140,7 +155,18 @@ def runscreen(argin):
 
 
 def thresholdtm(headers, sequences, dirname, designpars):
-    """Parallel process of Tm thresholding for input sequences"""
+    """Parallel process of Tm thresholding for input sequences
+    
+    Args:
+        headers (list): list of headers
+        sequences (list): list of sequences
+        dirname (str): directory name
+        designpars (list): list of design parameters
+    
+    Returns:
+        Tm (list): list of Tm values
+        siteChopped (list): list of indices of sequences that fulfill Tm requirement
+    """
 
     # pack up inputs for multiprocessing
     inputs = []

@@ -10,7 +10,16 @@ funmap = []
 
 
 def readblastout(file, armlength, variants):
-    """ Read the results from blast """
+    """ Read the results from blast
+    
+    Args:
+        file: str, path to the blast output file
+        armlength: int, length of the arm
+        variants: list, list of variants to check for
+        
+    Returns:
+        specific: bool, True if the sequence is specific, False if not
+    """
     global funmap
     global notmapped
     specific = True

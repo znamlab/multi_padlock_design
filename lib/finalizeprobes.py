@@ -121,23 +121,40 @@ def selectprobes(n, finals, headers):
             ):
                 simplebase.append(c)
             else:
+                # Chop the target sequence into substrings of length 10 with a step of 5
                 substring = chopseq(target, 10, 5)
+                
+                # Count the number of unique bases in each substring
                 nbase = [len(set(j)) for j in substring]
+                
+                # If any substring has only 1 or 2 unique bases, it is considered simple
                 if 1 in nbase or 2 in nbase:
                     simplebase.append(c)
                 else:
+                    # Chop the target sequence into substrings of length 2 with a step of 2
                     substring = chopseq(target, 2, 2)
+                    
+                    # Get the unique substrings
                     unique_substring = list(set(substring))
+                    
+                    # Count the occurrence of each unique substring
                     ndoublets = [substring.count(i) for i in unique_substring]
+                    
+                    # If the most common substring appears less than 4 times, it is considered complex
                     if max(ndoublets) < 4:
                         complexbase.append(c)
                     else:
+                        # Get the indices of the most common substrings
                         idx = [
                             j
                             for j, tmp in enumerate(ndoublets)
                             if ndoublets[j] == max(ndoublets)
                         ]
+                        
+                        # Assume the sequence is not simple
                         simple = False
+                        
+                        # If any of the most common substrings is not a homopolymer and appears 4 times consecutively in the target, it is considered simple
                         for j in idx:
                             if (
                                 unique_substring[j] not in ["AA", "CC", "GG", "TT"]
@@ -145,9 +162,12 @@ def selectprobes(n, finals, headers):
                             ):
                                 simple = True
                                 break
+                        
+                        # If the sequence is simple, add it to the simple base list
                         if simple:
                             simplebase.append(c)
                         else:
+                            # Otherwise, add it to the complex base list
                             complexbase.append(c)
 
         # probes ranking

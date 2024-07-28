@@ -126,7 +126,17 @@ def nprobes(n):
 
 
 def getdesigninput():
-    """Check all keyboard inputs and format target sequences"""
+    """Get keyboard inputs for probe design
+
+    Returns:
+        tuple: (
+            design_input (str, int, int, int, int, str): species, arm length, interval, Tm thresholds, number of probes per gene,
+            output parameters (str, str): output directory, temporary output directory,
+            gene parameters (list, list, list, list): gene acronyms, linkers, headers, variants,
+            design input (list, list, list, list): base positions, headers with positions, sequences, variants matching sequences
+        )
+
+    """
     success_s = False  # species
     success_g = False  # gene acronyms
     success_f = False  # fasta file
