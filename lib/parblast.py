@@ -18,21 +18,35 @@ notMapped = []
 
 
 def newblast():
-    """ Start a new blastn subprocess if there is work to do """
+    """Start a new blastn subprocess if there is work to do"""
     global Processes
     global NextProcess
     global fname
     fastadir = (config.fastadir_mouse, config.fastadir_human)
 
     if NextProcess < len(sites):
-        blastf = fname + '_' + str(NextProcess+1) + '.fasta'
+        blastf = fname + "_" + str(NextProcess + 1) + ".fasta"
 
-        if not os.path.isfile(fname + '_' + str(NextProcess+1) + '_blast.txt'):     # skip already existing files
-            txtcmd = ' '.join(('blastn', '-query', '"' + blastf + '"',
-                               '-db', '"' + os.path.join(fastadir[species], ('mouse', 'human')[species] + '.transcriptome' + '"'),
-                               '-outfmt 10',
-                               '-out ', '"' + fname + '_' + str(NextProcess+1) + '_blast.txt' + '"',
-                               '-word_size 7 -strand plus'))
+        if not os.path.isfile(
+            fname + "_" + str(NextProcess + 1) + "_blast.txt"
+        ):  # skip already existing files
+            txtcmd = " ".join(
+                (
+                    "blastn",
+                    "-query",
+                    '"' + blastf + '"',
+                    "-db",
+                    '"'
+                    + os.path.join(
+                        fastadir[species],
+                        ("mouse", "human")[species] + ".transcriptome" + '"',
+                    ),
+                    "-outfmt 10",
+                    "-out ",
+                    '"' + fname + "_" + str(NextProcess + 1) + "_blast.txt" + '"',
+                    "-word_size 7 -strand plus",
+                )
+            )
 
             blastnprocess = subprocess.Popen(txtcmd, shell=True)
             Processes.append(blastnprocess)
@@ -40,18 +54,30 @@ def newblast():
 
 
 def runningblast():
-    """ Check any running processes and start new ones if there are spare slots """
+    """Check any running processes and start new ones if there are spare slots"""
     global Processes
     global NextProcess
 
-    for p in range(len(Processes)-1, -1, -1):     # check the processes in reverse order
-        if Processes[p].poll() is not None:     # if the process hasn't finished will return None
+    for p in range(len(Processes) - 1, -1, -1):  # check the processes in reverse order
+        if (
+            Processes[p].poll() is not None
+        ):  # if the process hasn't finished will return None
             del Processes[p]
-    while (len(Processes) < config.max_MSA_processes) and (NextProcess < len(sites)):  # more to do and some spare slots
+    while (len(Processes) < config.max_MSA_processes) and (
+        NextProcess < len(sites)
+    ):  # more to do and some spare slots
         newblast()
 
 
 def continueblast(listSiteChopped, headers, dirname, designpars):
+    """Run blastn for the chopped sequences in parallel
+    Args:
+        listSiteChopped (list): list of chopped sequences
+        headers (list): list of headers
+        dirname (str): directory name
+        designpars (list): list of design parameters
+    
+    """
     global Processes
     global NextProcess
     global sites
@@ -70,8 +96,6 @@ def continueblast(listSiteChopped, headers, dirname, designpars):
         fname = createoutput.blastinfilename(dirname, headers[i])
 
         runningblast()  # start the max processes running
-        while len(Processes) > 0:   # still going on
+        while len(Processes) > 0:  # still going on
             runningblast()
-    print ("Blast finished!")
-
-
+    print("Blast finished!")
