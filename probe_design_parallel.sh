@@ -24,5 +24,5 @@ cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/${csv_fold
 for file in *.csv
 do
   echo "Starting job $file"
-  sbatch --export=INPUT="$file",PARENT="$csv_folder" --output=/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${csv_folder}/${csv_folder}_"${file%.csv}".out /nemo/lab/znamenskiyp/home/users/becalia/code/SBATCH/probe_design.sh
+  sbatch --export=INPUT="$file",PARENT="$csv_folder" --output=/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${csv_folder}/${csv_folder}_"${file%.csv}".out /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/probe_design.sh
 done

@@ -14,7 +14,12 @@ from lib import finalizeprobes
 if __name__ == "__main__":
     try:
         # get keyboard inputs and prepare sequences
-
+        
+        # design_pars : (species, int(armlen), int(interval), int(t1), int(t2), number of probes per gene)
+        # outpars : (outdir, outdir_temp)
+        # genepars : (genes, linkers, headers, variants)
+        # designinput : (basepos, headers_wpos, sequences, variants_matching_sequence)
+        
         designpars, outpars, genepars, designinput = \
             checkinput.getdesigninput()
         # fmt = checkinput.checkformat(genepars[2])
