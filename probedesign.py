@@ -54,10 +54,10 @@ if __name__ == "__main__":
 
         # prioritize sequences without homopolymers and randomly select the fixed number of probes per gene (if applicable)
         if len(designpars[5]):
-            sublist = finalizeprobes.selectprobes(int(designpars[5]), finallist, genepars[2])
+            sublist = finalizeprobes.selectprobes(int(designpars[5]), finallist, genepars[2], designpars[1])
             createoutput.writeprobefile(
                 genepars[0], genepars[2], sublist[0], sublist[1], sublist[2], sublist[3],
-                outpars, designpars[1], '6.ProbesRandomSubsetN=' + designpars[5] + '_')
+                outpars, designpars[1], '6.ProbesRandomSubsetN=' + designpars[5] + '_', regions=sublist[4])
 
         print("All finished!")
 

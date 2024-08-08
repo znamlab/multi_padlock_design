@@ -3,7 +3,9 @@
 
 import random
 from lib.screenseq import chopseq
-
+from Bio import SeqIO
+import config
+import pandas as pd
 
 def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChopped):
     """Correct fragment coordinates to full length mRNA coordinates"""
@@ -89,14 +91,49 @@ def removeunmapped(notmapped, targetpos, headers, targets, Tm, probes):
     return (probes, Tm, targetpos, targets)
 
 
-def selectprobes(n, finals, headers):
-    """Prioritize probes with no homopolymer sequences and choose randomly n candidates"""
+def selectprobes(n, finals, headers, armlength):
+    """Prioritize probes with no homopolymer sequences and choose randomly n candidates
+
+    Args:
+        n (int): number of probes per gene
+        finals (list): list of final probes
+        headers (list): list of headers
+        armlength (int): arm length
+    
+    Returns:
+        probes (list): list of final probes
+        Tm (list): list of Tm values
+        targetpos (list): list of target positions
+        targets (list): list of targets
+        filtered_regions (list): list of binding regions
+    """
     probes = finals[0]
     Tm = finals[1]
     targetpos = finals[2]
     targets = finals[3]
-
+    filtered_regions = [0] * len(headers)
     for i, header in enumerate(headers):
+        # Find transcript region of probe binding site
+        transcript = header[1:].split(" ")[0]
+        cds_file = config.cds_file
+        cdna_file = config.cdna_file
+        df = find_start_end_sites(cds_file, cdna_file, transcript)
+        target_end = [target + (1 + (2 * armlength)) for target in targetpos[i]]
+        regions = []
+        for index, pos in enumerate(targetpos[i]):
+            regions.append(classify_region(pos, target_end[index], df["CDS_start"].values, df["CDS_end"].values))
+        binding_regions = config.binding_regions
+        # If the probe binding site is not in the list of binding_regions, remove the probe
+        filtered_results = [(index, region) for index, region in enumerate(regions) if any(elem in binding_regions for elem in region)]
+        filtered_indices, filtered_regions[i] = zip(*filtered_results) if filtered_results else ([], [])
+        filtered_regions[i] = list(filtered_regions[i])
+        # Filter probes, Tm, targetpos, targets based on filtered indices
+        probes[i] = [probes[i][j] for j in filtered_indices]
+        Tm[i] = [Tm[i][j] for j in filtered_indices]
+        targetpos[i] = [targetpos[i][j] for j in filtered_indices]
+        targets[i] = [targets[i][j] for j in filtered_indices]
+
+
         # probes with homopolymers
         wAAAA = [c for c, j in enumerate(probes[i]) if "AAAA" in j]
         wCCCC = [c for c, j in enumerate(probes[i]) if "CCCC" in j]
@@ -186,17 +223,121 @@ def selectprobes(n, finals, headers):
         else:
             deletei = simplebase  # if still not enough, get rid of low-complexity ones
 
-        # prioritize sequence without homopolymers
-        # if len(noHomo) > n:
-        #    deletei = random.sample(noHomo, len(noHomo) - n)
-        #    deletei = deletei + list(wHomo)
-        # else:
-        #    deletei = random.sample(wHomo, len(wHomo) - n + len(noHomo))
-
         deletei.sort(reverse=True)
         for j in deletei:
             del targets[i][j]
             del Tm[i][j]
             del targetpos[i][j]
             del probes[i][j]
-    return (probes, Tm, targetpos, targets)
+            del filtered_regions[i][j]
+    return (probes, Tm, targetpos, targets, filtered_regions)
+
+def find_regions(cdna_seq, cds_seq):
+    start_cds = cdna_seq.find(cds_seq)
+    if start_cds == -1:
+        return None  # If the CDS sequence is not found in the cdna sequence
+    end_cds = start_cds + len(cds_seq)
+    return start_cds, end_cds
+
+
+# Function to parse a FASTA file and return a dictionary with metadata
+def parse_fasta(file_path):
+    sequences = {}
+    metadata = {}
+    for record in SeqIO.parse(file_path, "fasta"):
+        sequences[record.id] = str(record.seq)
+        header = record.description
+        
+        # Extract gene_symbol
+        gene_symbol = ""
+        if "gene_symbol:" in header:
+            gene_symbol = header.split("gene_symbol:")[1].split()[0]
+        
+        # Extract transcript_biotype
+        transcript_biotype = ""
+        if "transcript_biotype:" in header:
+            transcript_biotype = header.split("transcript_biotype:")[1].split()[0]
+        
+        # Extract description
+        description = ""
+        if "description:" in header:
+            description = header.split("description:")[1].strip()
+        
+        metadata[record.id] = {
+            "gene_symbol": gene_symbol,
+            "transcript_biotype": transcript_biotype,
+            "description": description
+        }
+    return sequences, metadata
+
+def find_start_end_sites(cds_file, cdna_file, transcript):
+    """Load ensembl files and find start and end sites of CDS for each transcript.
+
+    Args:
+        cds_file (path): Path to the CDS ensemble file.
+        cdna_file (path): Path to the cDNA ensembl file.
+        transcript (str): Transcript ID to search for.
+
+    Returns:
+        DataFrame: DataFrame containing the start and end sites of the CDS for each
+        transcript in the list.
+    """
+    cds_sequences, _ = parse_fasta(cds_file)
+    cdna_sequences, cdna_metadata = parse_fasta(cdna_file)
+
+    results = []
+    for transcript_id, cdna_seq in cdna_sequences.items():
+        if transcript_id in cds_sequences:
+            cds_seq = cds_sequences[transcript_id]
+            regions = find_regions(cdna_seq, cds_seq)
+            if regions:
+                start_cds, end_cds = regions
+                metadata = cdna_metadata.get(transcript_id, {})
+                result = {
+                    "Transcript_ID": transcript_id,
+                    "5'UTR_start": 0,
+                    "CDS_start": start_cds,
+                    "CDS_end": end_cds,
+                    "3'UTR_end": len(cdna_seq),
+                    "gene_symbol": metadata.get("gene_symbol", ""),
+                    "transcript_biotype": metadata.get("transcript_biotype", ""),
+                    "description": metadata.get("description", "")
+                }
+                results.append(result)
+    df = pd.DataFrame(results)
+
+    # Filter the dataframe to only include the transcripts in transcript
+    df = df[df["Transcript_ID"] == transcript]
+    
+    return df
+
+def classify_region(target_start, target_end, cds_start, cds_end):
+    """Classify probe binding regions based on startpos, endpos, cds_start, and cds_end
+
+    Args:
+        target_start (int): Start position of the probe binding region
+        target_end (int): End position of the probe binding region
+        cds_start (int): Start position of the CDS
+        cds_end (int): End position of the CDS
+
+    Returns:
+        list: List of regions that the probe binding region falls into
+    """
+
+    if target_start is None or target_end is None:
+        return None
+
+    if target_end < cds_start:
+        return ["5'UTR"]
+    elif (target_start < cds_start) and (target_end <= cds_end):
+        return ["5'UTR", "CDS"]
+    elif (target_start >= cds_start) and (target_end <= cds_end):
+        return ["CDS"]
+    elif (target_start < cds_start) and (target_end > cds_end):
+        return ["5'UTR", "CDS", "3'UTR"]
+    elif (target_start >= cds_start) and (target_start <= cds_end) and (target_end > cds_end):
+        return ["CDS", "3'UTR"]
+    elif target_start > cds_end:
+        return ["3'UTR"]
+    else:
+        return None

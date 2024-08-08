@@ -41,7 +41,7 @@ def newblast():
                         fastadir[species],
                         ("mouse", "human")[species] + ".transcriptome" + '"',
                     ),
-                    "-outfmt 10",
+                    '-outfmt "10 std qseq sseq"',
                     "-out ",
                     '"' + fname + "_" + str(NextProcess + 1) + "_blast.txt" + '"',
                     "-word_size 7 -strand plus",

@@ -119,11 +119,39 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
 
             fname = createoutput.blastinfilename(dirnames[1], headers[i])
 
+            import config
+            fastadir = (config.fastadir_mouse, config.fastadir_human)
+            with open(fastadir[0] + "/" + "mouse" + ".allheaders.txt", "r") as f:
+                Headers = [line.rstrip("\n") for line in f]
+
+            #take file and split to find gene name
+            gene_name = fname.split("/")[-1].split(".")[0]
+            print("Gene name:", gene_name)
+            first_match_line = next((line for line in Headers if gene_name in line), None)
+
+            if first_match_line:
+                # Step 2: Extract the gene ID
+                gene_id_start = first_match_line.find("gene:") + len("gene:")
+                gene_id_end = first_match_line.find(" ", gene_id_start)
+                gene_id = first_match_line[gene_id_start:gene_id_end]
+
+                # Step 3: Search for all instances of this gene ID
+                matching_lines = [line for line in Headers if gene_id in line]
+
+                # Step 4: Extract the required substrings
+                variants = [line[1:line.find(" ")] for line in matching_lines]
+
+                print("Gene ID:", gene_id)
+                print("Variants:", variants)
+            else:
+                print("No match found for the gene_name.")
+                variants = []
+
             notmapped = []
             blast_bw = []
             for j, target in enumerate(sites):
                 fblast = fname + "_" + str(j + 1) + "_blast.txt"
-                blast_bw.append(readblastout(fblast, armlength, accession[i]))
+                blast_bw.append(readblastout(fblast, armlength, variants))
 
             # find sequences that are specific enough
             idxspecific = np.nonzero(blast_bw)[0]
