@@ -9,18 +9,34 @@
 #SBATCH --mail-user=alexander.becalick@crick.ac.uk
 #SBATCH --output=/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out
 
-#tmux
-sleep 3
+# Get the current node name
+CURRENT_NODE=$(hostname)
 
-ml Anaconda3/2022.05
-ml Clustal-Omega
-ml BLAST+
-ml ClustalW2
+# Function to resubmit job excluding the current node
+resubmit_job() {
+    echo "Resubmitting job excluding node: $CURRENT_NODE"
+    sbatch --exclude=$CURRENT_NODE "$0"
+    exit 0
+}
 
-# Creating symbolic link for the output log
-ln -f /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_${INPUT}.out
+# Check if the 'ml' command is available
+if command -v ml &> /dev/null
+then
+    ml Anaconda3/2022.05
+    ml Clustal-Omega
+    ml BLAST+
+    ml ClustalW2
+else
+    echo "Module system is not available on node: $CURRENT_NODE"
+    resubmit_job
+fi
 
-source /camp/apps/eb/software/Anaconda/conda.env.sh
+# Check if symbolic link target directory exists before creating the link
+if [ -d "/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/" ]; then
+  ln -f /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_${INPUT}.out
+fi
+
+source /camp/apps/eb/software/Anaconda3/2022.05/etc/profile.d/conda.sh
 conda activate base
 cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design
 
@@ -39,6 +55,7 @@ mouse
 20
 ENDOF
 
-# Removing the symbolic link after the job is done
-rm /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out
-
+# Remove symbolic link after job completion
+if [ -L "/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out" ]; then
+  rm /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out
+fi
