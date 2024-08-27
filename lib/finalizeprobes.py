@@ -92,10 +92,10 @@ def removeunmapped(notmapped, targetpos, headers, targets, Tm, probes):
 
 
 def selectprobes(n, finals, headers, armlength):
-    """Prioritize probes with no homopolymer sequences and choose randomly n candidates
+    """Prioritize probes with no homopolymer sequences and choose randomly n candidates per region
 
     Args:
-        n (int): number of probes per gene
+        n (int): number of probes per region
         finals (list): list of final probes
         headers (list): list of headers
         armlength (int): arm length
@@ -125,111 +125,132 @@ def selectprobes(n, finals, headers, armlength):
         binding_regions = config.binding_regions
         # If the probe binding site is not in the list of binding_regions, remove the probe
         filtered_results = [(index, region) for index, region in enumerate(regions) if any(elem in binding_regions for elem in region)]
-        filtered_indices, filtered_regions[i] = zip(*filtered_results) if filtered_results else ([], [])
-        filtered_regions[i] = list(filtered_regions[i])
+        if filtered_results:
+            filtered_indices, filtered_regions[i] = zip(*filtered_results)
+            filtered_regions[i] = list(filtered_regions[i])
+        else:
+            filtered_indices, filtered_regions[i] = [], []
+        # Check if filtered_indices is empty
+        if not filtered_indices:
+            continue  # Skip this iteration if there are no valid indices
+
         # Filter probes, Tm, targetpos, targets based on filtered indices
         probes[i] = [probes[i][j] for j in filtered_indices]
         Tm[i] = [Tm[i][j] for j in filtered_indices]
         targetpos[i] = [targetpos[i][j] for j in filtered_indices]
         targets[i] = [targets[i][j] for j in filtered_indices]
 
+        # Group probes by region
+        region_to_indices = {}
+        for index, region in enumerate(filtered_regions[i]):
+            region_key = tuple(region) if isinstance(region, list) else region
+            if region_key not in region_to_indices:
+                region_to_indices[region_key] = []
+            region_to_indices[region_key].append(index)
 
-        # probes with homopolymers
-        wAAAA = [c for c, j in enumerate(probes[i]) if "AAAA" in j]
-        wCCCC = [c for c, j in enumerate(probes[i]) if "CCCC" in j]
-        wGGGG = [c for c, j in enumerate(probes[i]) if "GGGG" in j]
-        wTTTT = [c for c, j in enumerate(probes[i]) if "TTTT" in j]
-        wHomo = set(wAAAA + wCCCC + wGGGG + wTTTT)
+        for region, indices in region_to_indices.items():
+            # Check if indices are within the range of probes[i]
+            indices = [c for c in indices if c < len(probes[i])]
+            if not indices:
+                continue  # Skip if no valid indices
 
-        # without homopolymers
-        noHomo = list(set(range(0, len(targets[i]))) - wHomo)
+            # probes with homopolymers
+            wAAAA = [c for c in indices if "AAAA" in probes[i][c]]
+            wCCCC = [c for c in indices if "CCCC" in probes[i][c]]
+            wGGGG = [c for c in indices if "GGGG" in probes[i][c]]
+            wTTTT = [c for c in indices if "TTTT" in probes[i][c]]
+            wHomo = set(wAAAA + wCCCC + wGGGG + wTTTT)
 
-        # enough base complexity (do not consider low complexity at all)
-        # TODO: if this works out, will consider moving it to screenseq part
-        complexbase = []
-        simplebase = []
-        for c, target in enumerate(targets[i]):
-            # remove any target has longer than 5 stretch of the same base
-            if (
-                "GGGGG" in target
-                or "AAAAA" in target
-                or "CCCCC" in target
-                or "TTTTT" in target
-            ):
-                simplebase.append(c)
-            else:
-                # Chop the target sequence into substrings of length 10 with a step of 5
-                substring = chopseq(target, 10, 5)
-                
-                # Count the number of unique bases in each substring
-                nbase = [len(set(j)) for j in substring]
-                
-                # If any substring has only 1 or 2 unique bases, it is considered simple
-                if 1 in nbase or 2 in nbase:
+            # without homopolymers
+            noHomo = list(set(indices) - wHomo)
+
+            # enough base complexity (do not consider low complexity at all)
+            complexbase = []
+            simplebase = []
+            for c in indices:
+                target = targets[i][c]
+                # remove any target has longer than 5 stretch of the same base
+                if (
+                    "GGGGG" in target
+                    or "AAAAA" in target
+                    or "CCCCC" in target
+                    or "TTTTT" in target
+                ):
                     simplebase.append(c)
                 else:
-                    # Chop the target sequence into substrings of length 2 with a step of 2
-                    substring = chopseq(target, 2, 2)
-                    
-                    # Get the unique substrings
-                    unique_substring = list(set(substring))
-                    
-                    # Count the occurrence of each unique substring
-                    ndoublets = [substring.count(i) for i in unique_substring]
-                    
-                    # If the most common substring appears less than 4 times, it is considered complex
-                    if max(ndoublets) < 4:
-                        complexbase.append(c)
+                    # Chop the target sequence into substrings of length 10 with a step of 5
+                    substring = chopseq(target, 10, 5)
+
+                    # Count the number of unique bases in each substring
+                    nbase = [len(set(j)) for j in substring]
+
+                    # If any substring has only 1 or 2 unique bases, it is considered simple
+                    if 1 in nbase or 2 in nbase:
+                        simplebase.append(c)
                     else:
-                        # Get the indices of the most common substrings
-                        idx = [
-                            j
-                            for j, tmp in enumerate(ndoublets)
-                            if ndoublets[j] == max(ndoublets)
-                        ]
-                        
-                        # Assume the sequence is not simple
-                        simple = False
-                        
-                        # If any of the most common substrings is not a homopolymer and appears 4 times consecutively in the target, it is considered simple
-                        for j in idx:
-                            if (
-                                unique_substring[j] not in ["AA", "CC", "GG", "TT"]
-                                and unique_substring[j] * 4 in target
-                            ):
-                                simple = True
-                                break
-                        
-                        # If the sequence is simple, add it to the simple base list
-                        if simple:
-                            simplebase.append(c)
-                        else:
-                            # Otherwise, add it to the complex base list
+                        # Chop the target sequence into substrings of length 2 with a step of 2
+                        substring = chopseq(target, 2, 2)
+
+                        # Get the unique substrings
+                        unique_substring = list(set(substring))
+
+                        # Count the occurrence of each unique substring
+                        ndoublets = [substring.count(i) for i in unique_substring]
+
+                        # If the most common substring appears less than 4 times, it is considered complex
+                        if max(ndoublets) < 4:
                             complexbase.append(c)
+                        else:
+                            # Get the indices of the most common substrings
+                            idx = [
+                                j
+                                for j, tmp in enumerate(ndoublets)
+                                if ndoublets[j] == max(ndoublets)
+                            ]
 
-        # probes ranking
-        primary_targets = list(set(noHomo) & set(complexbase))
-        secondary_targets = list(wHomo & set(complexbase))
+                            # Assume the sequence is not simple
+                            simple = False
 
-        # prioritize sequence without homopolymers and no repeated substrings
-        if len(primary_targets) > n:
-            deletei = random.sample(primary_targets, len(primary_targets) - n)
-            deletei = deletei + list(wHomo | set(simplebase))
-        elif len(primary_targets) + len(secondary_targets) > n:
-            deletei = random.sample(
-                secondary_targets, len(secondary_targets) - n + len(primary_targets)
-            )
-            deletei = deletei + simplebase
-        else:
-            deletei = simplebase  # if still not enough, get rid of low-complexity ones
+                            # If any of the most common substrings is not a homopolymer and appears 4 times consecutively in the target, it is considered simple
+                            for j in idx:
+                                if (
+                                    unique_substring[j] not in ["AA", "CC", "GG", "TT"]
+                                    and unique_substring[j] * 4 in target
+                                ):
+                                    simple = True
+                                    break
 
-        deletei.sort(reverse=True)
-        for j in deletei:
-            del targets[i][j]
-            del Tm[i][j]
-            del targetpos[i][j]
-            del probes[i][j]
-            del filtered_regions[i][j]
+                            # If the sequence is simple, add it to the simple base list
+                            if simple:
+                                simplebase.append(c)
+                            else:
+                                # Otherwise, add it to the complex base list
+                                complexbase.append(c)
+
+            # probes ranking
+            primary_targets = list(set(noHomo) & set(complexbase))
+            secondary_targets = list(wHomo & set(complexbase))
+
+            # prioritize sequence without homopolymers and no repeated substrings
+            if len(primary_targets) > n:
+                deletei = random.sample(primary_targets, len(primary_targets) - n)
+                deletei = deletei + list(wHomo | set(simplebase))
+            elif len(primary_targets) + len(secondary_targets) > n:
+                deletei = random.sample(
+                    secondary_targets, len(secondary_targets) - n + len(primary_targets)
+                )
+                deletei = deletei + simplebase
+            else:
+                deletei = simplebase  # if still not enough, get rid of low-complexity ones
+
+            deletei.sort(reverse=True)
+            for j in deletei:
+                del targets[i][j]
+                del Tm[i][j]
+                del targetpos[i][j]
+                del probes[i][j]
+                del filtered_regions[i][j]
+
     return (probes, Tm, targetpos, targets, filtered_regions)
 
 def find_regions(cdna_seq, cds_seq):
