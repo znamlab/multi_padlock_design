@@ -95,7 +95,7 @@ dna_IMM1 = {
     "TT/TC": (1.6, -1.5), "TT/TG": (2.0, -1.5), "TT/TT": (1.4, -1.5),
     }
 
-def calc_tm_NN(seq, cseq=None, dnac1=60, Na=75, K=75, Tris=20, Mg=10, dNTPs=0, fmd=20):
+def calc_tm_NN(seq, cseq=None, dnac1=60, Na=75, K=75, Tris=20, Mg=10, dNTPs=0, fmd=20, strict=True):
     if cseq is None:
         cseq = seq
     tm = mt.chem_correction(
@@ -108,7 +108,9 @@ def calc_tm_NN(seq, cseq=None, dnac1=60, Na=75, K=75, Tris=20, Mg=10, dNTPs=0, f
             Tris=Tris,
             Mg=Mg,
             dNTPs=dNTPs,
-            imm_table=dna_IMM1)
+            imm_table=dna_IMM1,
+            tmm_table=dna_TMM1,
+            strict=strict)
         ,fmd=fmd)
     return tm
 
@@ -220,6 +222,10 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
                                 # position of matched sequence
                                 query_left, query_right = split_arms(query_seq, ligation_site, query_start)
                                 subject_left, subject_right = split_arms(subject_seq, ligation_site, query_start)
+                                query_left = query_left.strip()
+                                subject_left = subject_left.strip()
+                                query_right = query_right.strip()
+                                subject_right = subject_right.strip()
                                 if query_left:
                                     # Next fill gaps in the sequences. This is being generous
                                     # so that we err on the side of caution with potential non-specific hits
