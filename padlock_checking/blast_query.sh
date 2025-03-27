@@ -10,7 +10,9 @@
 #tmux
 sleep 3
 
-ml Anaconda3/2022.05
+. ~/.bashrc
+ml purge
+ml Anaconda3
 ml BLAST+
 
 source /camp/apps/eb/software/Anaconda/conda.env.sh
@@ -20,6 +22,5 @@ cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/padlock_ch
 REFSEQ_DIR=/nemo/lab/znamenskiyp/home/shared/resources/refseq
 SCRATCH_DIR=/nemo/lab/znamenskiyp/scratch
 
-#blastn -query $INPUT -db "${SCRATCH_DIR}/test_refseq/mouse.transcriptome" -outfmt 10 -out "${INPUT%.*}_blast.out" -word_size 7 -strand plus
 blastn -query $INPUT -db "${SCRATCH_DIR}/test_refseq/mouse.transcriptome" -outfmt "10 std qseq sseq" -out "${INPUT%.*}_blast.out" -word_size 7 -strand plus
 
