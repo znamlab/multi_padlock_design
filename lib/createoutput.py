@@ -36,7 +36,7 @@ def blastinfilename(dirname, filename):
         )  # access number and name
     except:
         filename = filename.replace("|", "")
-        filename = os.path.join(dirname, filename + "_target")  # first 20 characters
+        filename = os.path.join(dirname, filename[:30] + "_target")  # first 30 characters
     return filename
 
 # (designinput, siteCandidates, Tm, designpars[1], outpars, '3.AllSpecificTargets_')
@@ -71,7 +71,7 @@ def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
 
 
 def writeprobefile(
-    acronym, headers, probes, Tm, targetpos, targets, dirnames, armlength, fname
+    acronym, headers, probes, Tm, targetpos, targets, dirnames, armlength, fname, regions=None
 ):
     """Write file with original header, target sequence, Tm and final probe sequence"""
     t = dirnames[1].split("TempFolder")[1]
@@ -82,7 +82,7 @@ def writeprobefile(
             idxsort = np.argsort(targetpos[i])
             for j in idxsort:
                 f.write(
-                    "%s,%s,%f,%d,%d,%s\n"
+                    "%s,%s,%f,%d,%d,%s,%s\n"
                     % (
                         acronym[i],
                         targets[i][j],
@@ -90,6 +90,7 @@ def writeprobefile(
                         targetpos[i][j] + 1,
                         targetpos[i][j] + armlength * 2,
                         probes[i][j],
+                        regions[i][j] if regions else "",
                     )
                 )
             f.write("\n")
