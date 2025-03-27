@@ -215,8 +215,20 @@ def has_gap_or_mismatch(query, subject, ligation_site, start_pos, buffer=3):
 
 def split_arms(sequence, ligation_site, start_pos):
     split_point = ligation_site - start_pos
-    left_arm = sequence[:split_point]
-    right_arm = sequence[split_point:]
+
+    if split_point <= 0:
+        # If start_pos is larger than or equal to ligation_site, return empty left arm and full right arm
+        left_arm = ""
+        right_arm = sequence
+    elif split_point >= len(sequence):
+        # If split_point is beyond the length of the sequence, return full sequence as left arm and empty right arm
+        left_arm = sequence
+        right_arm = ""
+    else:
+        # Normal case, split sequence into left and right arms
+        left_arm = sequence[:split_point]
+        right_arm = sequence[split_point:]
+    
     return left_arm, right_arm
 
 def fill_gaps(query, subject):
