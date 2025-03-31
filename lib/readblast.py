@@ -263,7 +263,7 @@ def fill_gaps(query, subject):
 
     return ''.join(filled_query), ''.join(filled_subject)
 
-def readblastout(file, armlength, variants):
+def readblastout(file, armlength, variants, specificity_by_tm=False):
     """ Read the results from blast
     
     Args:
@@ -276,8 +276,6 @@ def readblastout(file, armlength, variants):
     """
     global funmap
     global notmapped
-   
-    
     specific = True
     mappable = False
     with open(file, "r") as fh:
@@ -302,7 +300,6 @@ def readblastout(file, armlength, variants):
                         # remove the first empty column (somehow appears in some db and blast versions)
                         if "" in scores:
                             scores.remove("")
-
                         # Filter hits based on Tm of each arm and mismatches near the ligation site
                         ligation_site = armlength + 1
                         #query is the padlock sequence
@@ -310,50 +307,85 @@ def readblastout(file, armlength, variants):
                         #subject is the transcript database sequence
                         subject_seq = columns[13].split('\n')[0]
                         query_start = int(columns[6])
-
-                        # First check if the sequences have gaps or mismatches near the ligation site
-                        if not has_gap_or_mismatch(query_seq, subject_seq, ligation_site, query_start):
-                            # Then split the sequences into left and right arms using actual start
-                            # position of matched sequence
-                            query_left, query_right = split_arms(query_seq, ligation_site, query_start)
-                            subject_left, subject_right = split_arms(subject_seq, ligation_site, query_start)
-                            if query_left:
-                                # Next fill gaps in the sequences. This is being generous
-                                # so that we err on the side of caution with potential non-specific hits
-                                query_left, subject_left = fill_gaps(query_left, subject_left)
-                                # Then check Tm of each arm
-                                tm_left = calc_tm_NN(seq=query_left, cseq=subject_left)
-                                tm_no_mismatch_left = calc_tm_NN(seq=query_left)
-                            else:
-                                tm_left = None
-                            if query_right:
-                                query_right, subject_right = fill_gaps(query_right, subject_right)
-                                tm_right = calc_tm_NN(seq=query_right, cseq=subject_right)
-                                tm_no_mismatch_right = calc_tm_NN(seq=query_right)
-                            else:
-                                tm_right = None
-                            # If both arms have Tm > 37, it's a valid probe
-                            if (tm_left < 37) or (tm_right < 37):
-                                print("Invalid probe")
-                            else:
+                        if specificity_by_tm:
+                            # First check if the sequences have gaps or mismatches near the ligation site
+                            if not has_gap_or_mismatch(query_seq, subject_seq, ligation_site, query_start):
+                                # Then split the sequences into left and right arms using actual start
+                                # position of matched sequence
+                                query_left, query_right = split_arms(query_seq, ligation_site, query_start)
+                                subject_left, subject_right = split_arms(subject_seq, ligation_site, query_start)
+                                query_left = query_left.strip()
+                                subject_left = subject_left.strip()
+                                query_right = query_right.strip()
+                                subject_right = subject_right.strip()
+                                if query_left:
+                                    # Next fill gaps in the sequences. This is being generous
+                                    # so that we err on the side of caution with potential non-specific hits
+                                    query_left, subject_left = fill_gaps(query_left, subject_left)
+                                    # Then check Tm of each arm
+                                    tm_left = calc_tm_NN(seq=query_left, cseq=subject_left)
+                                    tm_no_mismatch_left = calc_tm_NN(seq=query_left)
+                                else:
+                                    tm_left = None
+                                if query_right:
+                                    query_right, subject_right = fill_gaps(query_right, subject_right)
+                                    tm_right = calc_tm_NN(seq=query_right, cseq=subject_right)
+                                    tm_no_mismatch_right = calc_tm_NN(seq=query_right)
+                                else:
+                                    tm_right = None
+                                # If both arms have Tm > 37, it's a valid probe
+                                if (tm_left < 37) or (tm_right < 37):
+                                    print("Invalid probe")
+                                else:
+                                    print("Valid probe")
+                                    # First check if variants are provided
+                                    if len(variants):
+                                        # If they are and the hit is not in them, this is a non specific hit
+                                        if hit not in variants:
+                                            if isinstance(variants, list):
+                                                with open(os.path.join(os.path.dirname(file), 'homology.txt'), 'a') as fsimilar:
+                                                        fsimilar.write('%s,%s\n' % (hit, variants[0]))
+                                            else:
+                                                with open(os.path.join(os.path.dirname(file), 'homology.txt'), 'a') as fsimilar:
+                                                        fsimilar.write('%s,%s\n' % (hit, variants))
+                                            specific = False
+                                        # Otherwise, the hit is specific
+                                        else:
+                                            # And if it's a perfect match mark it as mappable
+                                            if float(scores[0]) == 100 and int(scores[1]) == 2*armlength:
+                                                mappable = True
+                                    # If no variants are provided, check if the hit is the same as the input sequence
+                                    else:
+                                        import warnings
+                                        warnings.warn('No gene variants searched for due to providing fasta input, \
+                                                    only checking if blast hits are the same as the input sequence')
+                                        if hit not in file.split('/')[-1]:
+                                            specific = False
+                                        else:
+                                            if float(scores[0]) == 100 and int(scores[1]) == 2*armlength:
+                                                mappable = True
+                        else:
+                            # Use original filtering logic if specificity_by_tm is False
+                            if (
+                                armlength < int(scores[1])
+                                and float(scores[0]) > 80
+                                and int(scores[4]) < armlength - 4
+                                and int(scores[5]) > armlength + 5
+                            ):
                                 print("Valid probe")
-                                # First check if variants are provided
+                                # Proceed with specificity check based on variants
                                 if len(variants):
-                                    # If they are and the hit is not in them, this is a non specific hit
                                     if hit not in variants:
                                         if isinstance(variants, list):
                                             with open(os.path.join(os.path.dirname(file), 'homology.txt'), 'a') as fsimilar:
-                                                    fsimilar.write('%s,%s\n' % (hit, variants[0]))
+                                                fsimilar.write('%s,%s\n' % (hit, variants[0]))
                                         else:
                                             with open(os.path.join(os.path.dirname(file), 'homology.txt'), 'a') as fsimilar:
-                                                    fsimilar.write('%s,%s\n' % (hit, variants))
+                                                fsimilar.write('%s,%s\n' % (hit, variants))
                                         specific = False
-                                    # Otherwise, the hit is specific
                                     else:
-                                        # And if it's a perfect match mark it as mappable
-                                        if float(scores[0]) == 100 and int(scores[1]) == 2*armlength:
+                                        if float(scores[0]) == 100 and int(scores[1]) == 2 * armlength:
                                             mappable = True
-                                # If no variants are provided, check if the hit is the same as the input sequence
                                 else:
                                     import warnings
                                     warnings.warn('No gene variants searched for due to providing fasta input, \
@@ -361,23 +393,17 @@ def readblastout(file, armlength, variants):
                                     if hit not in file.split('/')[-1]:
                                         specific = False
                                     else:
-                                        if float(scores[0]) == 100 and int(scores[1]) == 2*armlength:
+                                        if float(scores[0]) == 100 and int(scores[1]) == 2 * armlength:
                                             mappable = True
-                            if (
-                                armlength < int(scores[1])
-                                and float(scores[0]) > 80
-                                and int(scores[4]) < armlength - 4
-                                and int(scores[5]) > armlength + 5
-                            ):
-                                print("Valid probe by old filters")
                             else:
-                                print("Invalid probe by old filters")
-                            print(f"Tm left:             {tm_left:.2f} C  Tm right:             {tm_right:.2f} C")
-                            print(f"Tm no mismatch left: {tm_no_mismatch_left:.2f} C  Tm no mismatch right: {tm_no_mismatch_right:.2f} C")
-                            print("Q left:", query_left, "Q right:", query_right)
-                            print("S left:", subject_left, "S right:", subject_right)
-                            print(f"Transcript ID: {columns[1]}")
-                            print(f"E-value: {columns[10]} \n")
+                                print("Invalid probe")
+
+                        print(f"Tm left:             {tm_left:.2f} C  Tm right:             {tm_right:.2f} C")
+                        print(f"Tm no mismatch left: {tm_no_mismatch_left:.2f} C  Tm no mismatch right: {tm_no_mismatch_right:.2f} C")
+                        print("Q left:", query_left, "Q right:", query_right)
+                        print("S left:", subject_left, "S right:", subject_right)
+                        print(f"Transcript ID: {columns[1]}")
+                        print(f"E-value: {columns[10]} \n")
             # unmappable sequences will later be removed from final results
             if not mappable:
                 with open(file[0:-10] + '.fasta', 'r') as f:
@@ -392,7 +418,7 @@ def readblastout(file, armlength, variants):
     return specific
 
 
-def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
+def getcandidates(listSiteChopped, headers, dirnames, armlength, accession, specificity_by_tm):
     """ Get the candidates for the probes
 
     Args:
@@ -449,7 +475,7 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
             blast_bw = []
             for j, target in enumerate(sites):
                 fblast = fname + "_" + str(j + 1) + "_blast.txt"
-                blast_bw.append(readblastout(fblast, armlength, variants))
+                blast_bw.append(readblastout(fblast, armlength, variants, specificity_by_tm))
 
             # find sequences that are specific enough
             idxspecific = np.nonzero(blast_bw)[0]
@@ -459,6 +485,7 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
             # write unmappable sites
             notmapped = tempCandidates[notmapped]
             recorded = False
+            temp = None
             for j, nomap in enumerate(notmapped):
                 if j == 0:
                     funmap.write(
@@ -466,7 +493,7 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession):
                     )
                     recorded = True
                 else:
-                    if nomap == temp + 1:
+                    if temp is not None and nomap == temp + 1:
                         funmap.write("-")
                         recorded = False
                         if j == len(notmapped) - 1:

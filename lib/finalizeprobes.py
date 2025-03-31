@@ -5,6 +5,7 @@ import random
 from lib.screenseq import chopseq
 from Bio import SeqIO
 import config
+import pandas as pd
 
 def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChopped):
     """Correct fragment coordinates to full length mRNA coordinates"""
@@ -106,10 +107,6 @@ def selectprobes(n, finals, headers, armlength):
         targets (list): list of targets
         filtered_regions (list): list of binding regions
     """
-    print(n)
-    print(finals)
-    print(headers)
-    print(armlength)
     probes = finals[0]
     Tm = finals[1]
     targetpos = finals[2]
@@ -133,7 +130,6 @@ def selectprobes(n, finals, headers, armlength):
             filtered_regions[i] = list(filtered_regions[i])
         else:
             filtered_indices, filtered_regions[i] = [], []
-
         # Check if filtered_indices is empty
         if not filtered_indices:
             continue  # Skip this iteration if there are no valid indices
@@ -257,7 +253,6 @@ def selectprobes(n, finals, headers, armlength):
 
     return (probes, Tm, targetpos, targets, filtered_regions)
 
-
 def find_regions(cdna_seq, cds_seq):
     start_cds = cdna_seq.find(cds_seq)
     if start_cds == -1:
@@ -308,7 +303,6 @@ def find_start_end_sites(cds_file, cdna_file, transcript):
         DataFrame: DataFrame containing the start and end sites of the CDS for each
         transcript in the list.
     """
-    import pandas as pd
     cds_sequences, _ = parse_fasta(cds_file)
     cdna_sequences, cdna_metadata = parse_fasta(cdna_file)
 

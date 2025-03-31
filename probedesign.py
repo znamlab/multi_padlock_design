@@ -9,6 +9,7 @@ from lib import readblast
 from lib import createoutput
 from lib import distributeprobes
 from lib import finalizeprobes
+import config
 
 
 if __name__ == "__main__":
@@ -33,7 +34,7 @@ if __name__ == "__main__":
         parblast.continueblast(siteChopped, designinput[1], outpars[1], designpars)
 
         # Find specific targets
-        siteCandidates, notMapped = readblast.getcandidates(siteChopped, designinput[1], outpars, designpars[1], designinput[3])
+        siteCandidates, notMapped = readblast.getcandidates(siteChopped, designinput[1], outpars, designpars[1], designinput[3], config.specificity_by_tm)
         createoutput.writetargetfile(designinput, siteCandidates, Tm, designpars[1], outpars, '3.AllSpecificTargets_')
 
         # non-overlapping candidates
