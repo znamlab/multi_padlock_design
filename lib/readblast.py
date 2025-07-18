@@ -4,6 +4,7 @@
 import os
 from lib import createoutput
 import numpy as np
+import re
 from Bio.SeqUtils import MeltingTemp as mt
 from Bio.Seq import Seq
 
@@ -452,20 +453,26 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession, spec
             gene_name = fname.split("/")[-1].split(".")[0]
             print("Gene name:", gene_name)
             first_match_line = next((line for line in Headers if gene_name in line), None)
-
             if first_match_line:
-                # Step 2: Extract the gene ID
-                gene_id_start = first_match_line.find("gene:") + len("gene:")
-                gene_id_end = first_match_line.find(" ", gene_id_start)
-                gene_id = first_match_line[gene_id_start:gene_id_end]
+                if "gene:" in first_match_line:
+                    gene_id_start = first_match_line.find("gene:") + len("gene:")
+                    gene_id_end   = first_match_line.find(" ", gene_id_start)
+                    gene_key      = first_match_line[gene_id_start:gene_id_end]
 
-                # Step 3: Search for all instances of this gene ID
-                matching_lines = [line for line in Headers if gene_id in line]
+                    # match every header that has the same gene ID
+                    matching_lines = [line for line in Headers if f"gene:{gene_key}" in line]
 
-                # Step 4: Extract the required substrings
-                variants = [line[1:line.find(" ")] for line in matching_lines]
+                else:
+                    # take the *last* pair of parentheses – that’s the gene symbol
+                    m = re.search(r'\(([^)]+)\)(?!.*\([^)]+\))', first_match_line)
+                    gene_key = m.group(1)
 
-                print("Gene ID:", gene_id)
+                    # match every header that has the **same symbol**
+                    matching_lines = [line for line in Headers if f"({gene_key})" in line]
+
+                # finally collect accessions for every matching transcript
+                variants = [line.split()[0][1:] for line in matching_lines]
+                print("Gene ID:", gene_key)
                 print("Variants:", variants)
             else:
                 print("No match found for the gene_name.")
