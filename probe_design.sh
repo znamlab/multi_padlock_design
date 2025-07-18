@@ -23,7 +23,7 @@ resubmit_job() {
 if command -v ml &> /dev/null
 then
     ml purge
-    ml Anaconda3
+    ml Anaconda3/2024.10-1
     ml Clustal-Omega
     ml BLAST+
     ml ClustalW2
@@ -34,10 +34,10 @@ fi
 
 # Check if symbolic link target directory exists before creating the link
 if [ -d "/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/" ]; then
-  ln -f /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_%j.out /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_${INPUT}.out
+  ln -f /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_${SLURM_JOB_ID}.out /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${PARENT}/${PARENT}_${INPUT}.out
 fi
 
-source ~/.bashrc
+eval "$(/camp/apps/eb/software/Anaconda3/2024.10-1/bin/conda shell.bash hook)"
 conda activate iss-preprocess
 cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design
 
