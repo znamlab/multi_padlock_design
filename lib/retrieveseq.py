@@ -6,7 +6,7 @@
 import os
 import config
 from lib import parmsa
-from lib import formatrefseq
+from lib.formatrefseq import fastadb
 
 
 Acronyms = []
@@ -20,35 +20,57 @@ def loaddb(species):
     global Headers
     global Seq
 
-    fastadir = (config.fastadir_mouse, config.fastadir_human)
-    fasta_filenum = (config.fasta_filenum_mouse, config.fasta_filenum_human)
-    fasta_pre_suffix = (config.fasta_pre_suffix_mouse, config.fasta_pre_suffix_human)
+    try:
+        fastadir = os.path.join(config.BASE_DIR, config.reference_transcriptome)
+        if getattr(config, "reference_transcriptome", "").lower() == "refseq":
+            # Expect config.fasta_pre_suffix_refseq = (prefix, suffix), config.fasta_filenum_refseq = int
+            pre_suf = getattr(config, "fasta_pre_suffix_refseq", None)
+            filenum = getattr(config, "fasta_filenum_refseq", None)
+            acr_path = os.path.join(fastadir, species + ".acronymheaders.txt")
+            if not os.path.isfile(acr_path):
+                print("Processing fasta database files..")
+                if (
+                    isinstance(pre_suf, (list, tuple))
+                    and len(pre_suf) == 2
+                    and isinstance(filenum, int)
+                ):
+                    fastadb(
+                        fastadir,
+                        (pre_suf[0], pre_suf[1], filenum),
+                        species,
+                        source="refseq",
+                        keep_nm_nr_only=True,
+                    )
+                else:
+                    raise ValueError(
+                        "Invalid RefSeq config: expected fasta_pre_suffix_refseq=(prefix, suffix) and fasta_filenum_refseq=int"
+                    )
 
-    if species == "mouse":
-        s = 0
-    elif species == "human":
-        s = 1
+        elif getattr(config, "reference_transcriptome", "").lower() == "ensembl":
+            files = [config.cdna_file]
+            if hasattr(config, "extra_files") and config.extra_files:
+                files += config.extra_files
+            acr_path = os.path.join(fastadir, species + ".acronymheaders.txt")
+            if not os.path.isfile(acr_path):
+                print("Processing fasta database files..")
+                fastadb(
+                    fastadir,
+                    files,
+                    species,
+                    source="ensembl",
+                    keep_nm_nr_only=False,
+                )
 
-    # try:
-    # create trascriptome database if not existing
-    if not os.path.isfile(fastadir[s] + "/" + species + ".acronymheaders.txt"):
-        print("Processing fasta database files..")
-        formatrefseq.fastadb(
-            fastadir[s], fasta_filenum[s], fasta_pre_suffix[s], species
-        )
-    with open(fastadir[s] + "/" + species + ".acronymheaders.txt", "r") as f:
-        Acronyms = [line.rstrip("\n") for line in f]
-    with open(fastadir[s] + "/" + species + ".selectedheaders.txt", "r") as f:
-        Headers = [line.rstrip("\n") for line in f]
+        # load database files
+        with open(os.path.join(fastadir, species + ".acronymheaders.txt"), "r") as f:
+            Acronyms = [line.rstrip("\n") for line in f]
+        with open(os.path.join(fastadir, species + ".selectedheaders.txt"), "r") as f:
+            Headers = [line.rstrip("\n") for line in f]
+        with open(os.path.join(fastadir, species + ".selectedseqs.txt"), "r") as f:
+            Seq = [line.rstrip("\n") for line in f]
 
-    # load database sequences
-    Seq = []
-    with open(fastadir[s] + "/" + species + ".selectedseqs.txt", "r") as f:
-        Seq = [line.rstrip("\n") for line in f]
-
-
-# except:     # catch all
-#     print("Cannot load fasta database due to mismatch in species.")
+    except FileNotFoundError:
+        print("Cannot load fasta database due to mismatch in species.")
 
 
 def querygenes(genes, species):

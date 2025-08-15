@@ -22,7 +22,6 @@ def newblast():
     global Processes
     global NextProcess
     global fname
-    fastadir = (config.fastadir_mouse, config.fastadir_human)
 
     if NextProcess < len(sites):
         blastf = fname + "_" + str(NextProcess + 1) + ".fasta"
@@ -36,10 +35,10 @@ def newblast():
                     "-query",
                     '"' + blastf + '"',
                     "-db",
-                    '"'
-                    + os.path.join(
-                        fastadir[species],
-                        ("mouse", "human")[species] + ".transcriptome" + '"',
+                    os.path.join(
+                        '"' + config.BASE_DIR,
+                        config.reference_transcriptome,
+                        config.species + ".transcriptome" + '"',
                     ),
                     '-outfmt "10 std qseq sseq"',
                     "-out ",

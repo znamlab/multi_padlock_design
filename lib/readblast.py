@@ -285,18 +285,20 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
             noblast = False
             if specific:
                 if not ("XR" in line or "XM" in line):  # skip all predicted transcripts
-                    if "|" in line:
-                        columns = line.split("|")
-                        if len(columns) <= 3:
-                            hit = columns[1]#.split(".", 1)[0]
-                            scores = columns[-1].split(",")
-                        else:
-                            hit = columns[3]#.split(".", 1)[0]
-                            scores = columns[-1].split(",")
-                    else:
-                        columns = line.split(",")
-                        hit = columns[1]#.split(".", 1)[0]
-                        scores = columns[2:]
+                    # if "|" in line:
+                    #     columns = line.split("|")
+                    #     if len(columns) <= 3:
+                    #         hit = columns[1].split(".", 1)[0]
+                    #         scores = columns[-1].split(",")
+                    #     else:
+                    #         hit = columns[3].split(".", 1)[0]
+                    #         scores = columns[-1].split(",")
+                    # else:
+                    columns = line.split(",")
+                    # keep version to align with variants
+                    hit = columns[1].strip()
+                    scores = columns[2:]
+                    print(f"Hit: {hit}")
                     if len(scores):
                         # remove the first empty column (somehow appears in some db and blast versions)
                         if "" in scores:
@@ -445,44 +447,118 @@ def getcandidates(listSiteChopped, headers, dirnames, armlength, accession, spec
             fname = createoutput.blastinfilename(dirnames[1], headers[i])
 
             import config
-            fastadir = (config.fastadir_mouse, config.fastadir_human)
-            with open(fastadir[0] + "/" + "mouse" + ".allheaders.txt", "r") as f:
+
+            fastadir = os.path.join(config.BASE_DIR, config.reference_transcriptome)
+            with open(
+                os.path.join(fastadir, config.species + ".allheaders.txt"), "r"
+            ) as f:
                 Headers = [line.rstrip("\n") for line in f]
 
-            #take file and split to find gene name
-            gene_name = fname.split("/")[-1].split(".")[0]
+            # Load annotation file once to map Ensembl gene_symbol -> gene name
+            anno_df = None
+            if getattr(config, "annotation_file", None):
+                try:
+                    anno_df = pd.read_csv(config.annotation_file)
+                except Exception as e:
+                    print(
+                        f"Could not read annotation_file '{config.annotation_file}': {e}"
+                    )
+
+            # take file and split to find gene name (take substring before the first comma)
+            raw_gene_name = fname.split("/")[-1].split(".")[0]
+            gene_name = raw_gene_name.split(",")[0].strip()
             print("Gene name:", gene_name)
-            first_match_line = next((line for line in Headers if gene_name in line), None)
-            if first_match_line:
-                if "gene:" in first_match_line:
-                    gene_id_start = first_match_line.find("gene:") + len("gene:")
-                    gene_id_end   = first_match_line.find(" ", gene_id_start)
-                    gene_key      = first_match_line[gene_id_start:gene_id_end]
 
-                    # match every header that has the same gene ID
-                    matching_lines = [line for line in Headers if f"gene:{gene_key}" in line]
+            def _extract_match_key(line: str):
+                """
+                Return a tuple (style, key_for_matching) or (None, None) if no key found.
+                style in {"refseq","ensembl","custom"}
+                """
+                # Custom: first token after '>' contains '|'
+                first_tok = (
+                    line[1:].split()[0] if line.startswith(">") and line[1:] else ""
+                )
+                if "|" in first_tok:
+                    return "custom", first_tok.split("|", 1)[0]
 
+                # Ensembl: match by gene_symbol:<SYMBOL>
+                m_symbol = re.search(r"\bgene_symbol:([^\s]+)", line)
+                if m_symbol:
+                    symbol = m_symbol.group(1)
+                    return "ensembl", symbol
+
+                # RefSeq: last parentheses -> gene symbol
+                m_sym = re.search(r"\(([^)]+)\)(?!.*\([^)]+\))", line)
+                if m_sym:
+                    return "refseq", m_sym.group(1)
+
+                return None, None
+
+            def _map_symbol_to_name(symbol: str) -> str | None:
+                """
+                Convert a gene_symbol to a gene name using the annotation file.
+                Returns the mapped gene name (string) or None if not found.
+                """
+                if anno_df is None:
+                    return None
+                subset = None
+                if "gene_symbol" in anno_df.columns:
+                    subset = anno_df[anno_df["gene_symbol"] == symbol]
+                if (subset is None or subset.empty) and "gene_name" in anno_df.columns:
+                    subset = anno_df[anno_df["gene_name"] == symbol]
+                if (subset is None or subset.empty) and "name" in anno_df.columns:
+                    subset = anno_df[anno_df["name"] == symbol]
+                if subset is not None and not subset.empty:
+                    row = subset.iloc[0]
+                    for col in ("gene_name", "name"):
+                        if col in row and pd.notna(row[col]):
+                            return str(row[col])
+                return None
+
+            # compare case-insensitively for matching only; keep variants as-is
+            qkey_lower = gene_name.lower()
+            matching_lines = []
+            for line in Headers:
+                style, key = _extract_match_key(line)
+                if not key:
+                    continue
+                if style == "ensembl":
+                    mapped = _map_symbol_to_name(key)
+                    if mapped and mapped.lower() == qkey_lower:
+                        matching_lines.append((line, style))
+                    elif key.lower() == qkey_lower:
+                        # fallback: if no mapping found or mismatch, try direct symbol match
+                        matching_lines.append((line, style))
                 else:
-                    # take the *last* pair of parentheses – that’s the gene symbol
-                    m = re.search(r'\(([^)]+)\)(?!.*\([^)]+\))', first_match_line)
-                    gene_key = m.group(1)
+                    if key.lower() == qkey_lower:
+                        matching_lines.append((line, style))
 
-                    # match every header that has the **same symbol**
-                    matching_lines = [line for line in Headers if f"({gene_key})" in line]
-
-                # finally collect accessions for every matching transcript
-                variants = [line.split()[0][1:] for line in matching_lines]
-                print("Gene ID:", gene_key)
+            if matching_lines:
+                variants = []
+                for ln, style in matching_lines:
+                    # First token (ID) after '>' for RefSeq/Ensembl; entire header minus '>' for custom
+                    first_token = (
+                        ln[1:].split()[0] if ln.startswith(">") else ln.split()[0]
+                    )
+                    if style in ("refseq", "ensembl"):
+                        variants.append(first_token)
+                    elif style == "custom":
+                        variants.append(ln[1:] if ln.startswith(">") else ln)
+                    else:
+                        variants.append(first_token)
+                print("Matched headers:", len(matching_lines))
                 print("Variants:", variants)
             else:
                 print("No match found for the gene_name.")
-                variants = []
+                variants = accession
 
             notmapped = []
             blast_bw = []
             for j, target in enumerate(sites):
                 fblast = fname + "_" + str(j + 1) + "_blast.txt"
-                blast_bw.append(readblastout(fblast, armlength, variants, specificity_by_tm))
+                blast_bw.append(
+                    readblastout(fblast, armlength, variants, specificity_by_tm)
+                )
 
             # find sequences that are specific enough
             idxspecific = np.nonzero(blast_bw)[0]
