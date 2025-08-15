@@ -82,20 +82,21 @@ def process_row(row, armlength=20, tm_threshold=37, precomputed_variants=None):
     variants = precomputed_variants[row.query]
 
     valid_probe = False
+    query_left = None
+    query_right = None
     tm_left = None
     tm_right = None
     tm_no_mismatch_left = None
     tm_no_mismatch_right = None
     specific = None  # Default specific value
 
+    # Split the sequences into left and right arms
+    query_left, query_right = split_arms(query_seq, ligation_site, query_start)
+    subject_left, subject_right = split_arms(subject_seq, ligation_site, query_start)
+
     # Check for gaps or mismatches near the ligation site
     if not has_gap_or_mismatch(query_seq, subject_seq, ligation_site, query_start):
         ligation_site_missmatch = False
-        # Split the sequences into left and right arms
-        query_left, query_right = split_arms(query_seq, ligation_site, query_start)
-        subject_left, subject_right = split_arms(
-            subject_seq, ligation_site, query_start
-        )
 
         # Fill gaps and calculate Tm for left arm
         if query_left:
@@ -130,6 +131,10 @@ def process_row(row, armlength=20, tm_threshold=37, precomputed_variants=None):
             True  # There is a gap or mismatch near the ligation site
         )
     return {
+        "query_left": query_left,
+        "query_right": query_right,
+        "subject_left": subject_left,
+        "subject_right": subject_right,
         "tm_left_NN": tm_left,
         "tm_right_NN": tm_right,
         "tm_no_mismatch_left_NN": tm_no_mismatch_left,
