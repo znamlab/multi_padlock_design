@@ -827,20 +827,25 @@ def getcandidates(
                         f"Could not read annotation_file '{config.annotation_file}': {e}"
                     )
 
-            # take file and split to find gene name (take substring before the first comma)
-            raw_gene_name = fname.split("/")[-1].split(".")[0]
+            raw_basename = fname.split("/")[-1]
+            raw_gene_name = raw_basename.split(".")[0]
             gene_name = raw_gene_name.split(",")[0].strip()
             print("Gene name:", gene_name)
+            print(f"Accession: {accession}")
 
             def _extract_match_key(line: str):
                 """
                 Return a tuple (style, key_for_matching) or (None, None) if no key found.
                 style in {"refseq","ensembl","custom"}
                 """
-                # Custom: first token after '>' contains '|'
                 first_tok = (
                     line[1:].split()[0] if line.startswith(">") and line[1:] else ""
                 )
+                # RefSeq / predicted RefSeq style: keep entire accession token (with version) if starts with NM, NR, or XM
+                if first_tok.startswith(("NM", "NR", "XM")):
+                    return "refseq", first_tok.split(".")[0]
+
+                # Custom: first token after '>' contains '|'
                 if "|" in first_tok:
                     return "custom", first_tok.split("|", 1)[0]
 
@@ -849,11 +854,6 @@ def getcandidates(
                 if m_symbol:
                     symbol = m_symbol.group(1)
                     return "ensembl", symbol
-
-                # RefSeq: last parentheses -> gene symbol
-                m_sym = re.search(r"\(([^)]+)\)(?!.*\([^)]+\))", line)
-                if m_sym:
-                    return "refseq", m_sym.group(1)
 
                 return None, None
 
@@ -881,20 +881,46 @@ def getcandidates(
             # compare case-insensitively for matching only; keep variants as-is
             qkey_lower = gene_name.lower()
             matching_lines = []
-            for line in Headers:
-                style, key = _extract_match_key(line)
+            for header_line in Headers:
+                style, key = _extract_match_key(header_line)
                 if not key:
                     continue
                 if style == "ensembl":
                     mapped = _map_symbol_to_name(key)
                     if mapped and mapped.lower() == qkey_lower:
-                        matching_lines.append((line, style))
+                        matching_lines.append((header_line, style))
                     elif key.lower() == qkey_lower:
-                        # fallback: if no mapping found or mismatch, try direct symbol match
-                        matching_lines.append((line, style))
+                        matching_lines.append((header_line, style))
+                elif style == "refseq":
+                    header_gene_accession = header_line[1:].split(".")[0]
+                    if header_gene_accession.lower() == qkey_lower:
+                        print("Matched gene accessions")
+                        print(f"Style: {style}, Key: {key}")
+                        matching_lines.append((header_gene_accession, style))
+                        # RefSeq: last parentheses -> gene symbol
+                        m_sym = re.search(r"\(([^)]+)\)(?!.*\([^)]+\))", header_line)
+                        print(f"m_sym: {m_sym.group(1)}")
+                        if m_sym:
+                            gene_symbol = m_sym.group(1)
+                            # Collect all accessions whose header contains the same gene symbol
+                            for ref_line in Headers:
+                                r_sym = re.search(
+                                    r"\(([^)]+)\)(?!.*\([^)]+\))", ref_line
+                                )
+                                if r_sym:
+                                    if gene_symbol == r_sym.group(1):
+                                        transcript_var = re.match(
+                                            r"([A-Za-z0-9_]+?\.\d+)", ref_line[1:]
+                                        ).group(1)
+                                        if transcript_var:
+                                            matching_lines.append(
+                                                (transcript_var, style)
+                                            )
+                        # Early exit: we have resolved the refseq block and don't need further outer iterations
+                        break
                 else:
                     if key.lower() == qkey_lower:
-                        matching_lines.append((line, style))
+                        matching_lines.append((header_line, style))
 
             if matching_lines:
                 variants = []
@@ -903,8 +929,10 @@ def getcandidates(
                     first_token = (
                         ln[1:].split()[0] if ln.startswith(">") else ln.split()[0]
                     )
-                    if style in ("refseq", "ensembl"):
+                    if style == "ensembl":
                         variants.append(first_token)
+                    elif style == "refseq":
+                        variants.append(ln)
                     elif style == "custom":
                         variants.append(ln[1:] if ln.startswith(">") else ln)
                     else:
