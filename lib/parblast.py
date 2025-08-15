@@ -75,7 +75,7 @@ def continueblast(listSiteChopped, headers, dirname, designpars):
         headers (list): list of headers
         dirname (str): directory name
         designpars (list): list of design parameters
-    
+
     """
     global Processes
     global NextProcess
@@ -88,7 +88,7 @@ def continueblast(listSiteChopped, headers, dirname, designpars):
     elif designpars[0] == "human":
         species = 1
 
-    print ("Starting blast..")
+    print("Starting blast..")
     for i, sites in tqdm(enumerate(listSiteChopped)):
         print(headers[i])
         NextProcess = 0

@@ -36,13 +36,16 @@ def blastinfilename(dirname, filename):
         )  # access number and name
     except:
         filename = filename.replace("|", "")
-        filename = os.path.join(dirname, filename[:30] + "_target")  # first 30 characters
+        filename = os.path.join(
+            dirname, filename[:30] + "_target"
+        )  # first 30 characters
     return filename
+
 
 # (designinput, siteCandidates, Tm, designpars[1], outpars, '3.AllSpecificTargets_')
 def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
-    """ Write file with target sequence, Tm and start position
-    
+    """Write file with target sequence, Tm and start position
+
     Args:
         designinput (list): list of design input
         sites (list): list of sites
@@ -71,12 +74,21 @@ def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
 
 
 def writeprobefile(
-    acronym, headers, probes, Tm, targetpos, targets, dirnames, armlength, fname, regions=None
+    acronym,
+    headers,
+    probes,
+    Tm,
+    targetpos,
+    targets,
+    dirnames,
+    armlength,
+    fname,
+    regions=None,
 ):
     """Write file with original header, target sequence, Tm and final probe sequence"""
     t = dirnames[1].split("TempFolder")[1]
     with open(os.path.join(dirnames[0], fname + t + ".csv"), "w") as f:
-        f.write("acronym,target,Tm,startpos,endpos,padlock\n")
+        f.write("acronym,target,Tm,startpos,endpos,padlock,transcript_region\n")
         for i, header in enumerate(headers):
             f.write("%s\n" % header)
             idxsort = np.argsort(targetpos[i])
