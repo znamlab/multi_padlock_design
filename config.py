@@ -23,4 +23,10 @@ cdna_file = r"Mus_musculus.GRCm39.cdna.all.fa"
 blast_db_file = os.path.join(
     BASE_DIR, reference_transcriptome, f"{species}.selected.fasta"
 )
+
+
+annotation_file = os.path.join(
+    BASE_DIR, "data", "olfr_consensus_cds_3utr_annotations.csv"
+)
+binding_regions = ["CDS", "3'UTR"]
 specificity_by_tm = True
