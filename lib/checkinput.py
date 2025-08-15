@@ -7,6 +7,12 @@ from lib import retrieveseq
 from lib import createoutput
 from pathlib import Path
 
+import pandas as pd
+
+Acronyms = []
+Seq = []
+Headers = []
+
 
 def correctinput(string):
     """Change from backslash to slash"""
@@ -77,8 +83,8 @@ def makeoutputdir(outdir):
             success = True
         elif "Error 3" in str(e):  # directory does not exist
             try:
-                Path(outdir).mkdir(parents = True, exist_ok=True)
-                #os.makedirs(outdir)  # create subdirectories
+                Path(outdir).mkdir(parents=True, exist_ok=True)
+                # os.makedirs(outdir)  # create subdirectories
                 success = True
             except:  # catch all exceptions
                 print("Could not create output directory. Try again.")
@@ -146,6 +152,19 @@ def getdesigninput():
     success_t = False  # Tm threshold
     success_n = False  # fixed number of output sequences
 
+    while not success_d:
+        outdir = input("Output directory: ")
+        outdir = correctinput(outdir)
+        if outdir.find(" ") > -1:
+            print("No whitespace allowed in the directory path!")
+        else:
+            success_d = makeoutputdir(outdir)
+
+    # create temporary output folder
+    outdir_temp = createoutput.tempdir(outdir)
+    t = outdir_temp.split("TempFolder")[1]
+    os.makedirs(outdir_temp, exist_ok=True)
+
     # loop until all the keyboard inputs are correct
     while not success_s:
         species = input("Specify the species (human or mouse): ").lower()
@@ -179,36 +198,77 @@ def getdesigninput():
                 headers_wpos,
                 basepos,
             ) = readseqfile()
+            print(success_f)
             toavoid = [":", "/", "\\", "[", "]", "?", '"', " ", "<", ">"]
             genes = []
             linkers = []
             variants = []
-            variants_matching_sequence = []
+            print(f"Headers: {headers}")
             for header in headers:
                 for i in toavoid:
                     header = header.replace(i, "")
                 header = header.replace(",", "-")
                 genes.append(header)
-                linkers.append([])
-                variants.append([])
-                variants_matching_sequence.append([])
+            # Convert to Ensembl gene names
+            # Load the conversion table
+            conversion_table = pd.read_csv(
+                "/nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/data/olfr_consensus_cds_3utr_annotations.csv"
+            )
+
+            # Build symbol(lowercased) -> first-seen alias mapping (preserves original behavior)
+            symbol_to_alias = {}
+            for _, row in conversion_table.iterrows():
+                symbol = str(row["gene_name"])
+                aliases = [
+                    a.strip() for a in str(row["gene_symbol"]).split(",") if a.strip()
+                ]
+                key = symbol.lower()
+                if aliases and key not in symbol_to_alias:
+                    symbol_to_alias[key] = aliases[0]
+
+            def to_alias(name: str) -> str:
+                """Return the alias for a given gene name, or the original if none found."""
+                return symbol_to_alias.get(name.lower(), name)
+
+            genes = [to_alias(g) for g in genes]
+            print(f"Genes: {genes}")
+
+            # --- Retrieve sequences / hits ---
+            hits = retrieveseq.querygenes(genes, species)
+            print(f"Hits: {hits}")
+
+            retrieveseq.loaddb(species)
+            Headers = retrieveseq.Headers
+
+            # --- Collect variants and multi-hit headers for MSA ---
+            variants = []
+            headersMSA = []
+
+            def variant_id_from_header(h: str) -> str:
+                # Strip leading '>' (if present) and the suffix after the first dot
+                return h[1:].split(".", 1)[0]
+
+            for hit in hits:
+                if len(hit) == 1:
+                    # FIX: append the whole variant id (not characters of the string)
+                    variants.append(variant_id_from_header(Headers[hit[0]]))
+                elif len(hit) > 1:
+                    print("Checking hits")
+                    tempheaders = [Headers[i] for i in hit]
+                    headersMSA.append(tempheaders)
+                    variants.extend(variant_id_from_header(h) for h in tempheaders)
+                # if len(hit) == 0: nothing to do
+
+            # One entry per input header, as in original
+            linkers = [[] for _ in headers]
+            variants_matching_sequence = variants
+
+            print(f"Variants: {variants}")
     # else:
     #     success_f, seqfile, headers, headers_wpos, sequences = readseqfile()
     #     basepos = []
     #     linkers = []
-
-    while not success_d:
-        outdir = input("Output directory: ")
-        outdir = correctinput(outdir)
-        if outdir.find(" ") > -1:
-            print("No whitespace allowed in the directory path!")
-        else:
-            success_d = makeoutputdir(outdir)
-
-    # create temporary output folder
-    outdir_temp = createoutput.tempdir(outdir)
-    t = outdir_temp.split("TempFolder")[1]
-    os.makedirs(outdir_temp, exist_ok=True)
+    print(success_f)
 
     while not success_a:
         armlen = input("Length of one padlock arm (nt): ")

@@ -1,5 +1,6 @@
 # padlock design pipeline for multiplexed assay with multiple probes per target in cDNA-based expression profiling
 # Xiaoyan, 2017
+import sys
 
 from lib import checkinput
 from lib import screenseq
@@ -15,18 +16,19 @@ import config
 if __name__ == "__main__":
     try:
         # get keyboard inputs and prepare sequences
-        
+
         # design_pars : (species, int(armlen), int(interval), int(t1), int(t2), number of probes per gene)
         # outpars : (outdir, outdir_temp)
         # genepars : (genes, linkers, headers, variants)
         # designinput : (basepos, headers_wpos, sequences, variants_matching_sequence)
-        
-        designpars, outpars, genepars, designinput = \
-            checkinput.getdesigninput()
+
+        designpars, outpars, genepars, designinput = checkinput.getdesigninput()
         # fmt = checkinput.checkformat(genepars[2])
 
         # Tm screening
-        Tm, siteChopped = screenseq.thresholdtm(designinput[1], designinput[2], outpars[1], designpars)
+        Tm, siteChopped = screenseq.thresholdtm(
+            designinput[1], designinput[2], outpars[1], designpars
+        )
 
         # Make blast database if it doesn't exist
         formatrefseq.blastdb(designpars[0])
@@ -34,15 +36,32 @@ if __name__ == "__main__":
         parblast.continueblast(siteChopped, designinput[1], outpars[1], designpars)
 
         # Find specific targets
-        siteCandidates, notMapped = readblast.getcandidates(siteChopped, designinput[1], outpars, designpars[1], designinput[3], config.specificity_by_tm)
-        createoutput.writetargetfile(designinput, siteCandidates, Tm, designpars[1], outpars, '3.AllSpecificTargets_')
+        siteCandidates, notMapped = readblast.getcandidates(
+            siteChopped,
+            designinput[1],
+            outpars,
+            designpars[1],
+            designinput[3],
+            config.specificity_by_tm,
+        )
+        createoutput.writetargetfile(
+            designinput,
+            siteCandidates,
+            Tm,
+            designpars[1],
+            outpars,
+            "3.AllSpecificTargets_",
+        )
 
         # non-overlapping candidates
-        targets, targetpos, mapTmlist = distributeprobes.asmanyprobes(siteCandidates, siteChopped, designinput[2], designpars)
+        targets, targetpos, mapTmlist = distributeprobes.asmanyprobes(
+            siteCandidates, siteChopped, designinput[2], designpars
+        )
 
         # correct positions
         targets, targetpos, notMapped, Tm = finalizeprobes.correctpos(
-            designinput[0], targets, targetpos, notMapped, mapTmlist, Tm, siteChopped)
+            designinput[0], targets, targetpos, notMapped, mapTmlist, Tm, siteChopped
+        )
 
         # write genes with no candidates
         createoutput.emptyentries(targets, genepars[2], outpars)
@@ -50,28 +69,59 @@ if __name__ == "__main__":
         # fill up linker sequence and write
         probes = finalizeprobes.assembleprobes(targets, genepars, designpars[1])
         createoutput.writeprobefile(
-            genepars[0], genepars[2], probes, Tm, targetpos, targets, outpars, designpars[1], '4.NonOverlappingProbes_')
+            genepars[0],
+            genepars[2],
+            probes,
+            Tm,
+            targetpos,
+            targets,
+            outpars,
+            designpars[1],
+            "4.NonOverlappingProbes_",
+        )
 
         # remove targets cannot be found in database
-        finallist = finalizeprobes.removeunmapped(notMapped, targetpos, genepars[2], targets, Tm, probes)
+        finallist = finalizeprobes.removeunmapped(
+            notMapped, targetpos, genepars[2], targets, Tm, probes
+        )
         createoutput.writeprobefile(
-            genepars[0],genepars[2], finallist[0], finallist[1], finallist[2], finallist[3],
-            outpars, designpars[1], '5.ProbesDBMappable_')
+            genepars[0],
+            genepars[2],
+            finallist[0],
+            finallist[1],
+            finallist[2],
+            finallist[3],
+            outpars,
+            designpars[1],
+            "5.ProbesDBMappable_",
+        )
 
         # prioritize sequences without homopolymers and randomly select the fixed number of probes per gene (if applicable)
         if len(designpars[5]):
-            sublist = finalizeprobes.selectprobes(int(designpars[5]), finallist, genepars[2], designpars[1])
+            sublist = finalizeprobes.selectprobes(
+                int(designpars[5]), finallist, genepars[2], designpars[1]
+            )
             createoutput.writeprobefile(
-                genepars[0], genepars[2], sublist[0], sublist[1], sublist[2], sublist[3],
-                outpars, designpars[1], '6.ProbesRandomSubsetN=' + designpars[5] + '_', regions=sublist[4])
+                genepars[0],
+                genepars[2],
+                sublist[0],
+                sublist[1],
+                sublist[2],
+                sublist[3],
+                outpars,
+                designpars[1],
+                "6.ProbesRandomSubsetN=" + designpars[5] + "_",
+                regions=sublist[4],
+            )
 
         print("All finished!")
 
     except:
-        import sys
-        print (sys.exc_info()[0])
+        print(sys.exc_info()[0])
         import traceback
-        print (traceback.format_exc())
+
+        print(traceback.format_exc())
     finally:
-        print("Press Enter to continue ...")
-        input()
+        if sys.stdin is not None and sys.stdin.isatty():
+            print("Press Enter to continue ...")
+            input()
