@@ -4,19 +4,21 @@ from collections import defaultdict
 from tqdm import tqdm
 from Bio.Seq import Seq
 import subprocess
+from pathlib import Path
 
 from lib.readblast import has_gap_or_mismatch, split_arms, fill_gaps, calc_tm_NN
 from lib import formatrefseq
+import config
 
 
-def find_off_targets(gene, blast_query_path, ref_path, armlength=20):
+def find_off_targets(gene, blast_query_path, armlength=20):
     print(f"Finding off-targets for {gene}", flush=True)
     file = blast_query_path / f"{gene}_query_blast.out"
 
     df = pd.read_csv(file, header=None)
 
     # Exclude lines with predicted transcripts
-    df = df.loc[~(df[1].str.contains("XR") | df[1].str.contains("XM"))]
+    df = df.loc[~(df[1].str.contains("XR_") | df[1].str.contains("XM_"))]
 
     # Create a new column 'homology_candidate_hit' based on the given conditions
 
@@ -34,10 +36,19 @@ def find_off_targets(gene, blast_query_path, ref_path, armlength=20):
         & (df[7] > armlength + 5)
     )
 
-    variants = find_variants(gene, ref_path)
+    if getattr(config, "reference_transcriptome", "").lower() == "refseq":
+        variants = find_variants(gene)
 
+    elif getattr(config, "reference_transcriptome", "").lower() == "ensembl":
+        if getattr(config, "annotation_file", None):
+            # Convert Olfr gene name to gene symbol
+            anno_df = pd.read_csv(config.annotation_file)
+            # find gene in gene_name column and then find and return corresponding gene_symbol
+            gene = anno_df.loc[anno_df["gene_name"] == gene, "gene_symbol"].values[0]
+
+        variants = find_variants(gene)
     # Exclude known variants
-    df = df.loc[~(df[1].isin(variants))]
+    #df = df.loc[~(df[1].isin(variants))]
 
     df["gene"] = gene
 
@@ -45,21 +56,61 @@ def find_off_targets(gene, blast_query_path, ref_path, armlength=20):
     df.to_csv(blast_query_path / f"{gene}_off_targets.out")
 
 
-def find_variants(gene, ref_path):
-    """This function finds variants from the .acronymheaders.txt, selectedseqs.text and selectedheaders.txt files made by multi_padlock_design scripts"""
-    acronyms = pd.read_csv(ref_path / "mouse.acronymheaders.txt", header=None)
+def find_variants(gene):
+    """Find transcript/accession variants corresponding to a gene.
+    For Olfr genes:
+      - Rows containing '|' are split (take the part before the first '|').
+      - For those rows, if an annotation file is provided (expects columns: gene_name,gene_symbol),
+        attempt to replace the split name with its gene_symbol.
+      - Other rows remain unchanged.
+    """
+    ref_path = os.path.join(config.BASE_DIR, config.reference_transcriptome)
+    acronyms = pd.read_csv(
+        os.path.join(ref_path, f"{config.species}.acronymheaders.txt"), header=None
+    )
     acronyms.columns = ["gene_name"]
 
+    # Identify rows containing '|'
+    mask_pipe = acronyms["gene_name"].str.contains("|", regex=False)
+    pipe_indices = acronyms.index[mask_pipe]
+    if not pipe_indices.empty:
+        base_names = acronyms.loc[pipe_indices, "gene_name"].str.split("|").str[0]
+
+        # Prepare replacements: default to base name
+        replacements = dict(zip(pipe_indices, base_names))
+
+        # Optional gene_name -> gene_symbol mapping
+        if getattr(config, "annotation_file", None):
+            try:
+                anno_df = pd.read_csv(config.annotation_file)
+                if {"gene_name", "gene_symbol"}.issubset(anno_df.columns):
+                    mapping = dict(zip(anno_df["gene_name"], anno_df["gene_symbol"]))
+                    for idx in pipe_indices:
+                        base = replacements[idx]
+                        gene_symbol = mapping.get(base)
+                        if gene_symbol:  # replace only if a symbol exists
+                            replacements[idx] = gene_symbol
+                # else silently fall back to base names
+            except Exception:
+                # On any failure keep base names
+                pass
+
+        # Apply replacements
+        for idx, new_name in replacements.items():
+            acronyms.at[idx, "gene_name"] = new_name
+
+    # Find indices matching the (possibly already symbol) gene
     indices = acronyms.index[acronyms.gene_name == gene].to_list()
 
     accession_numbers = []
-    with open(ref_path / "mouse.selectedheaders.txt", "r") as f:
+    with open(
+        os.path.join(ref_path, f"{config.species}.selectedheaders.txt"), "r"
+    ) as f:
         lines = f.readlines()
         for i in indices:
             accession_numbers.append(lines[int(i)].strip())
 
     accession_numbers = format_variants(accession_numbers)
-
     return accession_numbers
 
 
@@ -79,7 +130,7 @@ def process_row(row, armlength=20, tm_threshold=37, precomputed_variants=None):
     hit = row.subject  # Get the subject (hit)
 
     # Use the precomputed variants for this query
-    variants = precomputed_variants[row.query]
+    variants = precomputed_variants[row.gene]
 
     valid_probe = False
     query_left = None
@@ -145,12 +196,76 @@ def process_row(row, armlength=20, tm_threshold=37, precomputed_variants=None):
     }
 
 
+# --- New global cache for fast bulk variant lookup ---
+_GENE_VARIANT_INDEX = None
+
+
+def _build_gene_variant_index():
+    """
+    Build and return a dict: gene_name (or mapped gene_symbol) -> list of accession variants.
+    Replicates the transformation logic from find_variants but does it once for all genes.
+    """
+    ref_path = os.path.join(config.BASE_DIR, config.reference_transcriptome)
+    acronym_path = os.path.join(ref_path, f"{config.species}.acronymheaders.txt")
+    selected_headers_path = os.path.join(
+        ref_path, f"{config.species}.selectedheaders.txt"
+    )
+    print("building")
+    # Load acronym headers
+    acronyms_df = pd.read_csv(acronym_path, header=None, names=["gene_name"])
+
+    # Process '|' lines (same logic as find_variants)
+    mask_pipe = acronyms_df["gene_name"].str.contains("|", regex=False)
+    if mask_pipe.any():
+        base_names = acronyms_df.loc[mask_pipe, "gene_name"].str.split("|").str[0]
+        acronyms_df.loc[mask_pipe, "gene_name"] = base_names
+
+        # Optional annotation mapping (gene_name -> gene_symbol)
+        if getattr(config, "annotation_file", None):
+            try:
+                anno_df = pd.read_csv(config.annotation_file)
+                if {"gene_name", "gene_symbol"}.issubset(anno_df.columns):
+                    mapping = dict(zip(anno_df["gene_name"], anno_df["gene_symbol"]))
+                    acronyms_df.loc[mask_pipe, "gene_name"] = acronyms_df.loc[
+                        mask_pipe, "gene_name"
+                    ].map(lambda x: mapping.get(x, x))
+            except Exception:
+                pass  # Fail silently, keep base names
+
+    # Load selected headers once
+    with open(selected_headers_path, "r") as f:
+        selected_headers = [line.rstrip("\n") for line in f]
+
+    # Build index
+    variant_index = {}
+    for idx, gene in enumerate(acronyms_df["gene_name"]):
+        header = selected_headers[idx]
+        # format like format_variants would (strip '>' and take token before first space)
+        acc = header.replace(">", "").split(" ")[0]
+        variant_index.setdefault(gene, []).append(acc)
+
+    return variant_index
+
+
 # Precompute the variants for each unique query
-def precompute_variants(df, ref_path):
-    unique_queries = df["query"].unique()
+def precompute_variants(df):
+    """
+    Optimized version:
+      - Builds a global gene->variants index once.
+      - Performs O(1) lookups per unique query (no repeated file I/O).
+    """
+    global _GENE_VARIANT_INDEX
+    if _GENE_VARIANT_INDEX is None:
+        _GENE_VARIANT_INDEX = _build_gene_variant_index()
+    print("test")
+    unique_queries = df["gene"].unique()
     precomputed_variants = {}
     for query in tqdm(unique_queries, desc="Precomputing variants"):
-        precomputed_variants[query] = find_variants(query, ref_path)
+        # Fallback to original find_variants if gene not in bulk index (edge cases)
+        variants = _GENE_VARIANT_INDEX.get(query)
+        if variants is None:
+            variants = find_variants(query)
+        precomputed_variants[query] = variants
     return precomputed_variants
 
 
@@ -161,7 +276,7 @@ def process_dataframe(df, armlength, tm_threshold, precomputed_variants):
     results = []
 
     # tqdm for showing progress
-    for row in tqdm(df.itertuples(), total=df.shape[0]):
+    for row in tqdm(df.itertuples(), total=df.shape[0], desc="Processing rows"):
         result = process_row(row, armlength, tm_threshold, precomputed_variants)
         results.append(result)
 
@@ -227,25 +342,96 @@ def loaddb(species, config):
 
 
 def find_genes_from_variants(variants, species, config):
-    """Find genes (acronyms) from a list of variants"""
-    Acronyms, Headers, Seq = loaddb(species, config)
+    """
+    Reverse lookup: given a list of variant identifiers (accession IDs, raw
+    acronym/header entries, or pipe-delimited Ensembl-style lines like
+      >Olfr1307|OTTMUSG00000015117|OTTMUST00000035855
+    return their corresponding gene symbol(s) (or processed gene names) using
+    the same transformation rules applied in find_variants:
+      - For acronym lines containing '|', only the part before the first '|'
+        is kept.
+      - If annotation_file (with columns gene_name,gene_symbol) is provided,
+        base names are mapped to gene_symbol when possible.
+    The function tolerates leading '>' and ignores text after the first
+    whitespace in headers. Output: dict {original_input: [gene_symbol] or None}.
+    """
+    Acronyms, Headers, _ = loaddb(species, config)
 
-    variant_to_acronym = defaultdict(list)
-    for acronym, header in zip(Acronyms, Headers):
-        gene_variant = header[1:].split(".", 1)[0]
-        variant_to_acronym[gene_variant].append(acronym)
+    # Build DataFrame for Acronyms to apply same transformations.
 
-    genes = [
-        variant_to_acronym[variant] if variant in variant_to_acronym else None
-        for variant in variants
-    ]
+    acr_df = pd.DataFrame({"raw": Acronyms})
+    # Extract base gene name (split at first '|' if present)
+    has_pipe = acr_df["raw"].str.contains("|", regex=False)
+    acr_df["base"] = acr_df["raw"]
+    acr_df.loc[has_pipe, "base"] = acr_df.loc[has_pipe, "raw"].str.split("|").str[0]
 
-    genes = {
-        variant: variant_to_acronym[variant] if variant in variant_to_acronym else None
-        for variant in variants
-    }
+    # Optional annotation mapping
+    mapping = {}
+    if getattr(config, "annotation_file", None):
+        try:
+            anno_df = pd.read_csv(config.annotation_file)
+            if {"gene_name", "gene_symbol"}.issubset(anno_df.columns):
+                mapping = dict(zip(anno_df["gene_name"], anno_df["gene_symbol"]))
+        except Exception:
+            mapping = {}
 
-    return genes
+    # Apply mapping to base -> symbol where available
+    acr_df["processed"] = acr_df["base"].map(lambda x: mapping.get(x, x))
+
+    # Build accession mapping aligned by index with Headers (same ordering as in loaddb)
+    # Accession token: strip '>' then take text before first whitespace
+    def _header_to_accession(h):
+        h = h.lstrip(">")
+        return h.split(" ")[0]
+
+    accessions = [_header_to_accession(h) for h in Headers]
+
+    # Maps:
+    accession_to_gene = {}
+    raw_acronym_to_gene = {}
+    for idx, proc in enumerate(acr_df["processed"]):
+        accession_to_gene[accessions[idx]] = proc
+        raw_acronym = acr_df.at[idx, "raw"]
+        raw_acronym_to_gene[raw_acronym] = proc
+        # Also allow processed form itself as key (self-mapping)
+        raw_acronym_to_gene.setdefault(proc, proc)
+
+    result = {}
+    for original in variants:
+        v = str(original).strip()
+        if not v:
+            result[original] = None
+            continue
+
+        # Normalize: remove leading '>' and isolate first whitespace token
+        v_norm = v.lstrip(">").split()[0]
+
+        gene_candidates = None
+
+        # 1. Direct accession match
+        if v_norm in accession_to_gene:
+            gene_candidates = [accession_to_gene[v_norm]]
+        # 2. Raw acronym match
+        elif v_norm in raw_acronym_to_gene:
+            gene_candidates = [raw_acronym_to_gene[v_norm]]
+        else:
+            # 3. Pipe-delimited header provided as variant: take base before first '|'
+            if "|" in v_norm:
+                base = v_norm.split("|", 1)[0]
+            else:
+                base = v_norm
+            # Map base through annotation mapping if possible
+            processed = mapping.get(base, base)
+            if processed in raw_acronym_to_gene:
+                gene_candidates = [raw_acronym_to_gene[processed]]
+            else:
+                # Accept processed itself if appears anywhere in processed list
+                if processed in acr_df["processed"].values:
+                    gene_candidates = [processed]
+
+        result[original] = gene_candidates
+
+    return result
 
 
 dna_IMM1 = {
@@ -927,7 +1113,7 @@ def process_dataframe_in_batches(df, armlength=20, tm_threshold=37, batch_size=3
                 # sequence has over 50% coverage
                 armlength < float(row.length)
                 # and over 80% identity
-                and float(row.percentage_identity) > 80
+                and float(row["percentage identity"]) > 80
                 # and covers +/- 5 bp of the ligation site
                 and int(row.qstart) < armlength - 4
                 and int(row.qend) > armlength + 5
