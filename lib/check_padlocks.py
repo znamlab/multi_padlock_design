@@ -986,7 +986,9 @@ def process_melting_row(row, armlength=20):
 
 
 # Batch processing function
-def process_dataframe_in_batches(df, armlength=20, tm_threshold=37, batch_size=300):
+def process_dataframe_in_batches(
+    df, precomputed_variants, armlength=20, tm_threshold=37, batch_size=300
+):
     sequences_left = []
     complements_left = []
     sequences_right = []
@@ -999,7 +1001,9 @@ def process_dataframe_in_batches(df, armlength=20, tm_threshold=37, batch_size=3
 
     # tqdm for showing progress
     for row in tqdm(df.itertuples(), total=df.shape[0], desc="Calculating Tms"):
-        processed_row = process_row(row, armlength)
+        processed_row = process_row(
+            row, armlength, precomputed_variants=precomputed_variants
+        )
 
         if processed_row:
             query_left = processed_row["query_left"]
@@ -1109,18 +1113,6 @@ def process_dataframe_in_batches(df, armlength=20, tm_threshold=37, batch_size=3
                 )
             else:
                 valid_probe_NN = False
-            if (
-                # sequence has over 50% coverage
-                armlength < float(row.length)
-                # and over 80% identity
-                and float(row["percentage identity"]) > 80
-                # and covers +/- 5 bp of the ligation site
-                and int(row.qstart) < armlength - 4
-                and int(row.qend) > armlength + 5
-            ):
-                valid_probe_old_filters = True
-            else:
-                valid_probe_old_filters = False
 
             melting_results_combined.append(
                 {
@@ -1130,7 +1122,6 @@ def process_dataframe_in_batches(df, armlength=20, tm_threshold=37, batch_size=3
                     "tm_left_NN": tm_left_NN,
                     "tm_right_NN": tm_right_NN,
                     "valid_probe_NN": valid_probe_NN,
-                    "valid_probe_old_filters": valid_probe_old_filters,
                     "ligation_site_missmatch": melting_results_NN[i][
                         "ligation_site_missmatch"
                     ],
@@ -1147,7 +1138,6 @@ def process_dataframe_in_batches(df, armlength=20, tm_threshold=37, batch_size=3
                     "tm_left_NN": None,
                     "tm_right_NN": None,
                     "valid_probe_NN": None,
-                    "valid_probe_old_filters": None,
                     "ligation_site_missmatch": None,
                     "left_length": 0,
                     "right_length": 0,
