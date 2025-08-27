@@ -1,11 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=blast_${1%.*}
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=1
 #SBATCH --time=1:00:00
-#SBATCH --mem=16G
+#SBATCH --mem=8G
 #SBATCH --partition=ncpu
-#SBATCH -e /nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/probe_checking/probe_${1%.*}.err
 
 #tmux
 sleep 3
@@ -19,8 +17,16 @@ source /camp/apps/eb/software/Anaconda/conda.env.sh
 conda activate iss-preprocess
 cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/padlock_checking
 
-REFSEQ_DIR=/nemo/lab/znamenskiyp/home/shared/resources/refseq
+# Build transcriptome DB path using config (mirrors logic in parblast.newblast)
+DB_PATH=$(python - <<'PY'
+import os, sys
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))  # ensure config import
+import config
+print(os.path.join(config.BASE_DIR, config.reference_transcriptome, config.species + ".transcriptome"))
+PY
+)
+
 SCRATCH_DIR=/nemo/lab/znamenskiyp/scratch
 
-blastn -query $INPUT -db "${SCRATCH_DIR}/test_refseq/mouse.transcriptome" -outfmt "10 std qseq sseq" -out "${INPUT%.*}_blast.out" -word_size 7 -strand plus
+blastn -query $INPUT -db "$DB_PATH" -outfmt "10 std qseq sseq" -out "${INPUT%.*}_blast.out" -word_size 7 -strand plus
 
