@@ -11,7 +11,7 @@ reference_transcriptome = "ensembl"
 species = "mouse"
 
 # mouse refseq database
-fasta_filenum_refseq = 2
+fasta_filenum_refseq = 3
 fasta_pre_suffix_refseq = ("mouse.", ".rna.fna")
 
 # mouse ensemble database
