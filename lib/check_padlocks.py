@@ -1,14 +1,23 @@
-import os
-import pandas as pd
-from collections import defaultdict
-from tqdm import tqdm
-from Bio.Seq import Seq
-import subprocess
-from pathlib import Path
+from __future__ import annotations
 
-from lib.readblast import has_gap_or_mismatch, split_arms, fill_gaps, calc_tm_NN
-from lib import formatrefseq
+import os
+import re
+import shutil
+import subprocess
+import tempfile
+import warnings
+from collections import defaultdict
+from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
+from typing import Dict, List, Tuple
+
 import config
+import numpy as np
+import pandas as pd
+from Bio.Seq import Seq
+from lib import formatrefseq
+from lib.readblast import calc_tm_NN, fill_gaps, has_gap_or_mismatch, split_arms
+from tqdm import tqdm
+from tqdm.auto import tqdm as _tqdm
 
 
 def find_off_targets(gene, blast_query_path, armlength=20):
@@ -1232,3 +1241,638 @@ def process_dataframe_in_batches(
         )
 
     return df
+
+
+# -----------------------------
+# User-configurable hetero/homo/hairpin parameters
+# -----------------------------
+KMER = 10
+MAX_CANDIDATES = 250
+MAX_FOR_THERMO = 80
+ALLOW_SELF_AS_PARTNER = False
+
+TEMP_C = 37  # temperature in °C for RNAstructure
+FOLD_BIN = os.environ.get("RNASTRUCTURE_FOLD_BIN", "Fold")
+DUPLEX_BIN = os.environ.get("RNASTRUCTURE_DUPLEX_BIN", "DuplexFold")
+
+# DATAPATH for RNAstructure data tables
+RNASTRUCTURE_DATAPATH = os.environ.get(
+    "DATAPATH",
+    os.path.join(
+        os.environ.get("CONDA_PREFIX", ""), "share", "rnastructure", "data_tables"
+    ),
+)
+
+
+def _env_with_datapath():
+    """
+    Get the environment variables with the RNAstructure DATAPATH.
+    """
+    env = os.environ.copy()
+    if RNASTRUCTURE_DATAPATH:
+        env["DATAPATH"] = RNASTRUCTURE_DATAPATH
+    return env
+
+
+# -----------------------------
+# Utilities
+# -----------------------------
+_COMP = str.maketrans("ACGTacgt", "TGCAtgca")
+
+
+def revcomp(seq: str) -> str:
+    """
+    Get the reverse complement of a DNA sequence.
+
+    Args:
+        seq (str): The DNA sequence to reverse complement.
+
+    Returns:
+        str: The reverse complement of the input DNA sequence.
+    """
+    return seq.translate(_COMP)[::-1]
+
+
+def clean_seq(seq: str) -> str:
+    """
+    Clean the input DNA sequence by removing whitespace and converting to uppercase.
+
+    Args:
+        seq (str): The DNA sequence to clean.
+
+    Returns:
+        str: The cleaned DNA sequence.
+    """
+    s = (seq or "").strip().upper()
+    s = "".join(c if c in "ACGT" else "N" for c in s)
+    return s
+
+
+# Memoized per-process binary check
+_BINS_CHECKED = False
+
+
+def ensure_bins():
+    """Check RNAstructure binaries once per process.
+
+    Raises:
+        RuntimeError: If required binaries are not found.
+    """
+    global _BINS_CHECKED
+    if _BINS_CHECKED:
+        return
+    for b in (FOLD_BIN, DUPLEX_BIN):
+        try:
+            subprocess.run(
+                [b, "--help"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+        except FileNotFoundError:
+            raise RuntimeError(
+                f"Required RNAstructure binary '{b}' not found on PATH. "
+                "Install via 'conda install rnastructure' or set RNASTRUCTURE_*_BIN env vars."
+            )
+    _BINS_CHECKED = True
+
+
+def write_fasta(seq: str, path: str, name="seq"):
+    """Write a FASTA file.
+
+    Args:
+        seq (str): The DNA sequence to write.
+        path (str): The file path to write the FASTA file.
+        name (str, optional): The name for the FASTA entry. Defaults to "seq".
+    """
+    with open(path, "w") as f:
+        f.write(f">{name}\n{seq}\n")
+
+
+def parse_ct_energy(ct_path: str):
+    """
+    Parse RNAstructure CT header and return energy (kcal/mol, negative is favorable).
+
+    Args:
+        ct_path (str): Path to CT file.
+    Returns:
+        float: Energy in kcal/mol, or np.nan if not found.
+    """
+    try:
+        with open(ct_path, "r") as f:
+            header = f.readline()
+        m = re.search(
+            r"(?:ENERGY|dG)\s*=\s*([+-]?\d+(?:\.\d+)?)", header, flags=re.IGNORECASE
+        )
+        if m:
+            return float(m.group(1))
+    except Exception:
+        pass
+    return np.nan
+
+
+def rnastructure_hairpin_dg(seq: str, temp_c: float = TEMP_C) -> float:
+    """
+    Single-strand MFE (hairpins included) via RNAstructure 'Fold' with --DNA.
+    Returns kcal/mol
+
+    Args:
+        seq (str): DNA sequence.
+        temp_c (float): Temperature in Celsius (default: 37).
+    Returns:
+        float: ΔG of folding in kcal/mol.
+    """
+    ensure_bins()
+    tmpdir = tempfile.mkdtemp(prefix="rnastruct_hp_")
+    try:
+        fa = os.path.join(tmpdir, "s.fa")
+        ct = os.path.join(tmpdir, "out.ct")
+        write_fasta(seq, fa)
+        # Temperature in Kelvin for RNAstructure
+        temp_k = 273.15 + temp_c
+        cmd = [FOLD_BIN, fa, ct, "--DNA", "--MFE", "--temperature", f"{temp_k}"]
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_env_with_datapath(),
+        )
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"Fold failed: {res.stderr.strip() or res.stdout.strip()}"
+            )
+        return parse_ct_energy(ct)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def rnastructure_duplex_dg(seq1: str, seq2: str, temp_c: float = TEMP_C) -> float:
+    """
+    Intermolecular duplex MFE via RNAstructure 'DuplexFold' with --DNA.
+    Returns kcal/mol. No intramolecular pairs are allowed (ideal for dimers).
+
+    Args:
+        seq1 (str): First DNA sequence.
+        seq2 (str): Second DNA sequence.
+        temp_c (float): Temperature in Celsius (default: 37).
+    Returns:
+        float: ΔG of duplex formation in kcal/mol.
+    """
+    ensure_bins()
+    tmpdir = tempfile.mkdtemp(prefix="rnastruct_duplex_")
+    try:
+        fa1 = os.path.join(tmpdir, "a.fa")
+        fa2 = os.path.join(tmpdir, "b.fa")
+        ct = os.path.join(tmpdir, "out.ct")
+        write_fasta(seq1, fa1, "a")
+        write_fasta(seq2, fa2, "b")
+        temp_k = 273.15 + temp_c
+        cmd = [DUPLEX_BIN, fa1, fa2, ct, "--DNA", "--temperature", f"{temp_k}"]
+        res = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_env_with_datapath(),
+        )
+        if res.returncode != 0:
+            raise RuntimeError(
+                f"DuplexFold failed: {res.stderr.strip() or res.stdout.strip()}"
+            )
+        return parse_ct_energy(ct)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def longest_exact_rc_run(a: str, b: str) -> int:
+    """
+    Finds longest exact reverse-complement match between a and b.
+
+    Args:
+        a (str): First sequence.
+        b (str): Second sequence.
+    Returns:
+        int: Length of longest exact reverse-complement match.
+    """
+    rb = revcomp(b)
+    n, m = len(a), len(rb)
+    prev = [0] * (m + 1)
+    best = 0
+    for i in range(1, n + 1):
+        curr = [0] * (m + 1)
+        ai = a[i - 1]
+        for j in range(1, m + 1):
+            if ai == rb[j - 1]:
+                curr[j] = prev[j - 1] + 1
+                if curr[j] > best:
+                    best = curr[j]
+        prev = curr
+    return best
+
+
+def three_prime_bias_weight(pos: int, L: int, k: int) -> float:
+    """Calculate the 3' bias weight for a given position in a sequence.
+
+    Args:
+        pos (int): The position of interest (0-based).
+        L (int): The total length of the sequence.
+        k (int): The length of the k-mer.
+
+    Returns:
+        float: The 3' bias weight.
+    """
+    dist3 = L - (pos + k)
+    return 1.0 / (1.0 + dist3)
+
+
+def _intra_task(item):
+    """Compute hairpin and homodimer ΔG values for a given sequence.
+
+    Args:
+        item (tuple): A tuple containing the index and the sequence.
+
+    Returns:
+        tuple: A tuple containing the index, hairpin ΔG, and homodimer Δ
+    """
+    i, seq = item
+    hp = np.nan
+    hd = np.nan
+    try:
+        hp = rnastructure_hairpin_dg(seq)
+    except Exception:
+        pass
+    try:
+        hd = rnastructure_duplex_dg(seq, seq)
+    except Exception:
+        pass
+    return i, hp, hd
+
+
+# -----------------------------
+# Build / normalize input df
+# -----------------------------
+def prepare_df(df: pd.DataFrame) -> pd.DataFrame:
+    """Prepare the DataFrame by adding a name column and cleaning sequences.
+
+    Args:
+        df (pd.DataFrame): The input DataFrame.
+
+    Returns:
+        pd.DataFrame: The prepared DataFrame with cleaned sequences and a name column.
+    """
+    if "name" not in df.columns:
+        df = df.copy()
+        df["name"] = [f"oligo_{i}" for i in range(len(df))]
+    df = df.copy()
+    df["padlock"] = df["padlock"].map(clean_seq)
+    bad = df["padlock"].str.contains("N")
+    if bad.any():
+        print(f"[warn] Dropping {bad.sum()} sequences containing non-ACGT symbols.")
+        df = df.loc[~bad].reset_index(drop=True)
+    return df
+
+
+# -----------------------------
+# Hairpin & homodimer (RNAstructure)
+# -----------------------------
+def compute_intrastrand(df: pd.DataFrame, n_jobs: int | None = None) -> pd.DataFrame:
+    """
+    Compute hairpin and homodimer ΔG values with accurate, single-line tqdm updates.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with a "padlock" column containing sequences
+        n_jobs (int | None): Number of parallel jobs to use. If None or 1, runs serially.
+    Returns:
+        pd.DataFrame: DataFrame with added "hairpin_dg_kcalmol" and
+                      "homodimer_dg_kcalmol" columns.
+    """
+    seqs = df["padlock"].tolist()
+    N = len(seqs)
+    hairpin = [np.nan] * N
+    homodimer = [np.nan] * N
+
+    if n_jobs is None or n_jobs == 1:
+        pbar = _pbar(total=N, desc="Hairpin & homodimer", unit="oligo")
+        for i, s in enumerate(seqs):
+            _, hp, hd = _intra_task((i, s))
+            hairpin[i] = hp
+            homodimer[i] = hd
+            pbar.update(1)
+        pbar.close()
+    else:
+        with ProcessPoolExecutor(max_workers=n_jobs, initializer=ensure_bins) as ex:
+            pbar = _pbar(total=N, desc="Hairpin & homodimer (parallel)", unit="oligo")
+            it = iter(enumerate(seqs))
+            inflight = set()
+            max_inflight = n_jobs * 4
+
+            for _ in range(min(N, max_inflight)):
+                try:
+                    inflight.add(ex.submit(_intra_task, next(it)))
+                except StopIteration:
+                    break
+
+            while inflight:
+                done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+                for fut in done:
+                    i, hp, hd = fut.result()
+                    hairpin[i] = hp
+                    homodimer[i] = hd
+                    pbar.update(1)
+                while len(inflight) < max_inflight:
+                    try:
+                        inflight.add(ex.submit(_intra_task, next(it)))
+                    except StopIteration:
+                        break
+            pbar.close()
+
+    out = df.copy()
+    out["hairpin_dg_kcalmol"] = hairpin
+    out["homodimer_dg_kcalmol"] = homodimer
+    return out
+
+
+# -----------------------------
+# k-mer index on forward seqs
+# -----------------------------
+def build_kmer_index(seqs, k: int):
+    """Build a k-mer index from the given sequences.
+
+    Args:
+        seqs (list): A list of sequences.
+        k (int): The length of the k-mer.
+
+    Returns:
+        dict: A dictionary mapping k-mers to their positions in the sequences.
+    """
+    index = defaultdict(list)  # kmer -> [(idx, pos)]
+    for idx, s in enumerate(seqs):
+        L = len(s)
+        for pos in range(0, L - k + 1):
+            index[s[pos : pos + k]].append((idx, pos))
+    return index
+
+
+def generate_candidates_for_oligo(i, seqs, index, k: int, max_candidates: int):
+    """Generate candidate oligos for a given oligo index.
+
+    Args:
+        i (int): The index of the oligo to generate candidates for.
+        seqs (list): The list of oligo sequences.
+        index (dict): The k-mer index.
+        k (int): The k-mer length.
+        max_candidates (int): The maximum number of candidate oligos to return.
+
+    Returns:
+        list: A list of candidate oligo indices.
+    """
+    s = seqs[i]
+    L = len(s)
+    candidate_scores = defaultdict(float)
+    for pos_i in range(0, L - k + 1):
+        rc = revcomp(s[pos_i : pos_i + k])
+        hits = index.get(rc)
+        if not hits:
+            continue
+        w_i = three_prime_bias_weight(pos_i, L, k)
+        for j, pos_j in hits:
+            if (not ALLOW_SELF_AS_PARTNER) and j == i:
+                continue
+            Lj = len(seqs[j])
+            w_j = three_prime_bias_weight(pos_j, Lj, k)
+            combined = 0.6 * w_i + 0.4 * w_j
+            if combined > candidate_scores[j]:
+                candidate_scores[j] = combined
+    if not candidate_scores:
+        return []
+    top = sorted(candidate_scores.items(), key=lambda kv: kv[1], reverse=True)[
+        :max_candidates
+    ]
+    return [j for j, _ in top]
+
+
+def prescore_pairs_by_runlen(i, candidate_js, seqs, max_for_thermo: int):
+    """Prescore candidate pairs by longest exact reverse-complement run length.
+    Args:
+        i (int): The index of the oligo to prescore candidates for.
+        candidate_js (list): The list of candidate oligo indices.
+        seqs (list): The list of oligo sequences.
+        max_for_thermo (int): The maximum number of candidates to return for thermodynamic evaluation.
+    Returns:
+        list: A list of prescored candidate oligo indices.
+    """
+    if not candidate_js:
+        return []
+    s_i = seqs[i]
+    scored = []
+    for j in candidate_js:
+        Lrun = longest_exact_rc_run(s_i, seqs[j])
+        scored.append((j, Lrun, 1000 * Lrun + (j % 7) * 0.01))
+    scored.sort(key=lambda x: x[2], reverse=True)
+    return [j for j, _, _ in scored[:max_for_thermo]]
+
+
+# -----------------------------
+# Parallel pool: worker state
+# -----------------------------
+_G_SEQS = None
+_G_NAMES = None
+
+
+def _init_pool(seqs, names):
+    """Initializer run in each worker process to stash read-only data & warm binaries.
+
+    Args:
+        seqs (list): List of sequences.
+        names (list): List of names.
+    """
+    global _G_SEQS, _G_NAMES
+    _G_SEQS = seqs
+    _G_NAMES = names
+    ensure_bins()
+
+
+def _duplex_task(pair: Tuple[int, int]):
+    """Compute ΔG for a single unordered pair (i, j).
+
+    Args:
+        pair (tuple): A tuple containing two indices (i, j).
+    Returns:
+        tuple: A tuple containing the pair (i, j) and the computed ΔG value
+    """
+    i, j = pair
+    try:
+        dg = rnastructure_duplex_dg(_G_SEQS[i], _G_SEQS[j])
+    except Exception:
+        dg = np.nan
+    return (i, j), dg
+
+
+def _pbar(total: int, desc: str, unit: str):
+    """Create a stable, single-line progress bar (or a no-op in non-TTY).
+
+    Args:
+        total (int): Total number of iterations.
+        desc (str): Description for the progress bar.
+        unit (str): Unit of measurement for the progress bar.
+    Returns:
+        tqdm: A tqdm progress bar instance.
+    """
+    return _tqdm(
+        total=total,
+        desc=desc,
+        unit=unit,
+        dynamic_ncols=True,
+        mininterval=0.2,
+        smoothing=0.1,
+        leave=False,  # <- do not leave bar lines behind
+        position=0,  # <- keep on a single line
+    )
+
+
+# -----------------------------
+# End-to-end driver (parallel + dedup + tqdm)
+# -----------------------------
+def annotate_with_thermo(
+    df: pd.DataFrame,
+    kmer=KMER,
+    max_candidates=MAX_CANDIDATES,
+    max_for_thermo=MAX_FOR_THERMO,
+    n_jobs: int | None = None,  # control parallelism
+) -> pd.DataFrame:
+    """
+    Annotate with hairpin/homodimer (serial) and best heterodimer (parallelized with dedup).
+    Each unique unordered pair (i, j) from all shortlists is evaluated exactly once.
+
+    Args:
+        df (pd.DataFrame): Input DataFrame with a "padlock" column containing sequences
+        kmer (int): k-mer length for indexing (default: 10)
+        max_candidates (int): Max candidates to shortlist per oligo (default: 250)
+        max_for_thermo (int): Max candidates per oligo to evaluate thermodynamically (default: 80)
+        n_jobs (int | None): Number of parallel jobs to use. If None, defaults to min(8, cpu_count).
+    Returns:
+        pd.DataFrame: DataFrame with added columns:
+                      "hairpin_dg_kcalmol", "homodimer_dg_kcalmol",
+                      "best_heterodimer_dg_kcalmol", "best_heterodimer_partner",
+                      "heterodimer_candidate_dgs_kcalmol", "heterodimer_candidate_partners"
+    """
+    df = prepare_df(df)
+
+    # Step 1: Hairpin & homodimer (serial)
+    df1 = compute_intrastrand(df, n_jobs=n_jobs)
+
+    names = df1["name"].tolist()
+    seqs = df1["padlock"].tolist()
+    N = len(seqs)
+
+    # Step 2: k-mer index
+    kindex = build_kmer_index(seqs, kmer)
+
+    # Step 3a: per-oligo candidate shortlist (serial, fast; show progress)
+    shortlists: List[List[int]] = [None] * N
+    pbar = _pbar(total=N, desc="Shortlisting partners", unit="oligo")
+    for i in range(N):
+        cand_js = generate_candidates_for_oligo(i, seqs, kindex, kmer, max_candidates)
+        shortlist_js = prescore_pairs_by_runlen(i, cand_js, seqs, max_for_thermo)
+        shortlists[i] = shortlist_js
+        pbar.update(1)
+    pbar.close()
+
+    # Step 3b: build set of unique unordered pairs across ALL shortlists
+    # (ΔG(i,j) == ΔG(j,i)); evaluate each pair exactly once.
+    seen = set()
+    pairs: List[Tuple[int, int]] = []
+    for i, js in enumerate(shortlists):
+        if not js:
+            continue
+        for j in js:
+            a, b = (i, j) if i < j else (j, i)
+            if (not ALLOW_SELF_AS_PARTNER) and a == b:
+                continue
+            if (a, b) not in seen:
+                seen.add((a, b))
+                pairs.append((a, b))
+
+    # Early exit: no pairs to evaluate
+    if not pairs:
+        out = df1.copy()
+        out["best_heterodimer_dg_kcalmol"] = [np.nan] * N
+        out["best_heterodimer_partner"] = [None] * N
+        return out
+
+    # Step 3c: parallel DuplexFold over unique pairs with tqdm and bounded in-flight futures
+    if n_jobs is None:
+        n_jobs = max(1, min(8, (os.cpu_count() or 2)))
+
+    energy: Dict[Tuple[int, int], float] = {}
+    with ProcessPoolExecutor(
+        max_workers=n_jobs, initializer=_init_pool, initargs=(seqs, names)
+    ) as ex:
+        pbar = _pbar(total=len(pairs), desc="DuplexFold (unique pairs)", unit="pair")
+        inflight = set()
+        it = iter(pairs)
+        max_inflight = n_jobs * 4
+
+        # Prime submissions
+        for _ in range(min(len(pairs), max_inflight)):
+            try:
+                pair = next(it)
+            except StopIteration:
+                break
+            inflight.add(ex.submit(_duplex_task, pair))
+
+        # Consume as they finish; keep queue topped up
+        while inflight:
+            done, inflight = wait(inflight, return_when=FIRST_COMPLETED)
+            for fut in done:
+                (i, j), dg = fut.result()
+                energy[(i, j)] = dg
+                pbar.update(1)
+            while len(inflight) < max_inflight:
+                try:
+                    pair = next(it)
+                except StopIteration:
+                    break
+                inflight.add(ex.submit(_duplex_task, pair))
+        pbar.close()
+
+    # Step 3d: for each oligo, pick best partner from its shortlist using cached energies
+    best_hdgs = [np.nan] * N
+    best_partners = [None] * N
+    cand_dgs = [[] for _ in range(N)]
+    cand_names = [[] for _ in range(N)]
+
+    pbar = _pbar(total=N, desc="Ranking partners", unit="oligo")
+    for i, js in enumerate(shortlists):
+        ranked: list[tuple[float, int]] = []
+        if js:
+            for j in js:
+                a, b = (i, j) if i < j else (j, i)
+                dg = energy.get((a, b), np.nan)
+                if not np.isnan(dg):
+                    ranked.append((float(dg), j))
+
+            # Sort strongest (most negative ΔG) -> weakest
+            ranked.sort(key=lambda x: x[0])
+
+            # Save full ranked lists
+            cand_dgs[i] = [dg for dg, _j in ranked]
+            cand_names[i] = [names[_j] for _dg, _j in ranked]
+
+            # Also keep the legacy "best_*" summaries for convenience/back-compat
+            if ranked:
+                best_hdgs[i] = ranked[0][0]
+                best_partners[i] = names[ranked[0][1]]
+
+        pbar.update(1)
+    pbar.close()
+
+    out = df1.copy()
+    out["best_heterodimer_dg_kcalmol"] = best_hdgs
+    out["best_heterodimer_partner"] = best_partners
+    # NEW: full ranked candidate lists per oligo
+    out["heterodimer_candidate_dgs_kcalmol"] = cand_dgs
+    out["heterodimer_candidate_partners"] = cand_names
+
+    return out
