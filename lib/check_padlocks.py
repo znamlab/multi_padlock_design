@@ -908,6 +908,7 @@ def run_melting_batch(
     dnac=0.00000006,
     form_method="bla96",
     oligo_conc_form=4,
+    use_slurm=False,
 ):
     """
     Run melting-batch command for a batch of sequences and return their melting temperatures.
@@ -919,23 +920,27 @@ def run_melting_batch(
         Na, Mg, Tris, formamide, K, dnac: Experimental concentration parameters for the calculation, applied to all sequences.
         form_method (str): Formamide correction method to use. Choose either 'lincorr' (% formamide) or 'bla96' (mol/L)
         oligo_conc_form (int): Oligo concentration formula (1 for equimolar oligos, 4 for sequence in excess of complement)
+        use_slurm (bool): If True, run melting-batch on the current SLURM node (expects `ml melting` already loaded).
 
     Returns:
         dict: A dictionary where keys are sequence pairs, and values are their respective melting temperatures.
     """
-
     # Create the melting-batch input file
     if complements is None:
         complements = [str(Seq(s).complement()) for s in sequences]
     else:
         complements = [str(Seq(c).complement()) for c in complements]
+
     formamide = (formamide * 10 * 1.13) / 45.04
+
+    # Ensure absolute path for input file
     with open(filename, "w") as f:
         for s_arg, c_arg in zip(sequences, complements):
             # Write each sequence and its complement on the same line, separated by a space
             f.write(f"{s_arg} {c_arg}\n")
     # Get the full path to the file
     filename = os.path.abspath(filename)
+    filename_base = os.path.basename(filename)
 
     args = [
         "-for",
@@ -951,14 +956,51 @@ def run_melting_batch(
         filename,
     ]
 
-    # Run the melting-batch command
     cmd = "melting-batch"
-    working_dir = "C:/ProgramData/MELTING5.2.0/executable/"
-    subprocess.run(
-        [cmd] + args, cwd=working_dir, capture_output=True, text=True, shell=True
-    )
+
+    # Run the melting-batch command (SLURM vs Windows)
+    if use_slurm:
+        # Run on current node; assume module is already loaded and cmd is on PATH
+        completed = subprocess.run(
+            [cmd] + args,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        used_cwd = os.getcwd()
+    else:
+        # Original Windows behavior
+        working_dir = "C:/ProgramData/MELTING5.2.0/executable/"
+        completed = subprocess.run(
+            [cmd] + args,
+            cwd=working_dir,
+            capture_output=True,
+            text=True,
+            shell=True,
+            check=False,
+        )
+        used_cwd = working_dir
+
+    if completed.returncode != 0:
+        raise RuntimeError(
+            f"melting-batch failed (code {completed.returncode}). stderr:\n{completed.stderr}"
+        )
+
+    # Locate the result file robustly
+    candidates = [
+        f"{filename}.results.csv",
+        os.path.join(used_cwd, f"{filename_base}.results.csv"),
+        os.path.join(os.getcwd(), f"{filename_base}.results.csv"),
+    ]
+    results_path = next((p for p in candidates if os.path.isfile(p)), None)
+    if results_path is None:
+        raise FileNotFoundError(
+            "Unable to locate melting-batch results CSV. Tried:\n"
+            + "\n".join(candidates)
+        )
+
     # Parse the output to extract melting temperatures
-    output = pd.read_csv("melting_batch_input.txt.results.csv", sep="\t")
+    output = pd.read_csv(results_path, sep="\t")
 
     melting_temps = {}
 
@@ -966,8 +1008,7 @@ def run_melting_batch(
     for _, row in output.iterrows():
         seq_pair = (row["Sequence"], str(Seq(row["Complementary"]).complement()))
         melting_temp = row["Tm (deg C)"]
-        # check type of melting_temp and remove commas if string
-        if type(melting_temp) == str:
+        if isinstance(melting_temp, str):
             melting_temp = float(melting_temp.replace(",", ""))
         melting_temps[seq_pair] = melting_temp
 
@@ -980,16 +1021,22 @@ def process_melting_row(row, armlength=20):
     subject_seq = row.sseq
     ligation_site = armlength + 1
     query_start = row.qstart
-    query_left, query_right = split_arms(query_seq, ligation_site, query_start)
-    subject_left, subject_right = split_arms(subject_seq, ligation_site, query_start)
+    (
+        query_left,
+        query_right,
+        subject_left,
+        subject_right,
+    ) = split_arms(query_seq, subject_seq, ligation_site, query_start)
 
     # Check for gaps or mismatches near the ligation site
     if not has_gap_or_mismatch(query_seq, subject_seq, ligation_site, query_start):
-        # Split the sequences into left and right arms
-        query_left, query_right = split_arms(query_seq, ligation_site, query_start)
-        subject_left, subject_right = split_arms(
-            subject_seq, ligation_site, query_start
-        )
+        # Split the sequences into left and right arms using query-derived split
+        (
+            query_left,
+            query_right,
+            subject_left,
+            subject_right,
+        ) = split_arms(query_seq, subject_seq, ligation_site, query_start)
         # Fill gaps
         if query_left:
             query_left, subject_left = fill_gaps(query_left, subject_left)
