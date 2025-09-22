@@ -486,9 +486,10 @@ def calc_tm_NN(
 
 
 def has_gap_or_mismatch(query, subject, ligation_site, start_pos, buffer=3):
-    # Split the sequence into left and right arms
-    query_left, query_right = split_arms(query, ligation_site, start_pos)
-    subject_left, subject_right = split_arms(subject, ligation_site, start_pos)
+    # Split the sequences into left and right arms based on the query-derived split
+    query_left, query_right, subject_left, subject_right = split_arms(
+        query, subject, ligation_site, start_pos
+    )
     # Check for gaps or mismatches within buffer of the ligation site
     # For the left arm, check the right end of the sequence
     if len(query_left) < buffer or len(query_right) < buffer:
@@ -505,23 +506,51 @@ def has_gap_or_mismatch(query, subject, ligation_site, start_pos, buffer=3):
     return False
 
 
-def split_arms(sequence, ligation_site, start_pos):
+def split_arms(query, subject, ligation_site, start_pos):
+    """
+    Split query and subject into left/right arms, using the ligation site relative to the
+    original ungapped 40bp query. Gaps ('-') in the query do not count toward the split
+    position, but are preserved in the output strings. The subject is split at the same
+    character index as the query to preserve alignment.
+
+    Args:
+        query (str): Query sequence (may contain '-')
+        subject (str): Subject sequence (may contain '-')
+        ligation_site (int): 1-based ligation site position in the original 40bp sequence
+        start_pos (int): 1-based start position of this query segment relative to the original 40bp
+
+    Returns:
+        tuple[str, str, str, str]: (query_left, query_right, subject_left, subject_right)
+    """
+    # Number of non-gap bases from the start of the query to include in the left arm
     split_point = ligation_site - start_pos
 
+    # Fast paths
     if split_point <= 0:
-        # If start_pos is larger than or equal to ligation_site, return empty left arm and full right arm
-        left_arm = ""
-        right_arm = sequence
-    elif split_point >= len(sequence):
-        # If split_point is beyond the length of the sequence, return full sequence as left arm and empty right arm
-        left_arm = sequence
-        right_arm = ""
-    else:
-        # Normal case, split sequence into left and right arms
-        left_arm = sequence[:split_point]
-        right_arm = sequence[split_point:]
+        # Entire fragment lies to the right of the ligation site
+        return "", query, "", subject
 
-    return left_arm, right_arm
+    # Count total non-gap characters in query
+    total_non_gaps = sum(1 for c in query if c != "-")
+    if split_point >= total_non_gaps:
+        # Entire fragment is on/left of the ligation site
+        return query, "", subject, ""
+
+    # Find the character index in the query where the non-gap count reaches split_point
+    non_gap_count = 0
+    split_idx = 0
+    for i, ch in enumerate(query):
+        if ch != "-":
+            non_gap_count += 1
+        if non_gap_count == split_point:
+            split_idx = i + 1  # include this character in the left arm
+            break
+
+    q_left = query[:split_idx]
+    q_right = query[split_idx:]
+    s_left = subject[:split_idx]
+    s_right = subject[split_idx:]
+    return q_left, q_right, s_left, s_right
 
 
 def fill_gaps(query, subject):
@@ -609,12 +638,14 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
                                 query_seq, subject_seq, ligation_site, query_start
                             ):
                                 # Then split the sequences into left and right arms using actual start
-                                # position of matched sequence
-                                query_left, query_right = split_arms(
-                                    query_seq, ligation_site, query_start
-                                )
-                                subject_left, subject_right = split_arms(
-                                    subject_seq, ligation_site, query_start
+                                # position of matched sequence; use query-derived split for both
+                                (
+                                    query_left,
+                                    query_right,
+                                    subject_left,
+                                    subject_right,
+                                ) = split_arms(
+                                    query_seq, subject_seq, ligation_site, query_start
                                 )
                                 query_left = query_left.strip()
                                 subject_left = subject_left.strip()
