@@ -164,9 +164,13 @@ def process_row(row, armlength=20, tm_threshold=37, precomputed_variants=None):
     tm_no_mismatch_right = None
     specific = None  # Default specific value
 
-    # Split the sequences into left and right arms
-    query_left, query_right = split_arms(query_seq, ligation_site, query_start)
-    subject_left, subject_right = split_arms(subject_seq, ligation_site, query_start)
+    # Split the sequences into left and right arms using query-derived split for both
+    (
+        query_left,
+        query_right,
+        subject_left,
+        subject_right,
+    ) = split_arms(query_seq, subject_seq, ligation_site, query_start)
 
     # Check for gaps or mismatches near the ligation site
     if not has_gap_or_mismatch(query_seq, subject_seq, ligation_site, query_start):
