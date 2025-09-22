@@ -35,25 +35,48 @@ def find_off_targets(gene, blast_query_path, armlength=20):
         (df[6] < armlength - 4)
         & (df[7] > armlength + 5)
     )
-
+    failed_match = False
     if getattr(config, "reference_transcriptome", "").lower() == "refseq":
         variants = find_variants(gene)
-
     elif getattr(config, "reference_transcriptome", "").lower() == "ensembl":
         if getattr(config, "annotation_file", None):
             # Convert Olfr gene name to gene symbol
-            anno_df = pd.read_csv(config.annotation_file)
-            # find gene in gene_name column and then find and return corresponding gene_symbol
-            gene = anno_df.loc[anno_df["gene_name"] == gene, "gene_symbol"].values[0]
-
+            try:
+                anno_df = pd.read_csv(config.annotation_file)
+                if {"gene_name", "gene_symbol"}.issubset(anno_df.columns):
+                    match = anno_df.loc[anno_df["gene_name"] == gene, "gene_symbol"]
+                    if (
+                        not match.empty
+                        and pd.notna(match.values[0])
+                        and str(match.values[0]).strip()
+                    ):
+                        gene = match.values[0]
+                    else:
+                        warnings.warn(
+                            f"Gene '{gene}' not found in annotation_file; using original gene name."
+                        )
+                        failed_match = True
+                else:
+                    warnings.warn(
+                        "annotation_file missing required columns 'gene_name' and 'gene_symbol'; using original gene name."
+                    )
+            except Exception as e:
+                warnings.warn(
+                    f"Failed to map gene using annotation_file ({e}); using original gene name."
+                )
         variants = find_variants(gene)
     # Exclude known variants
-    #df = df.loc[~(df[1].isin(variants))]
+    # df = df.loc[~(df[1].isin(variants))]
 
     df["gene"] = gene
 
     # Write off-targets to file
     df.to_csv(blast_query_path / f"{gene}_off_targets.out")
+
+    if failed_match:
+        return gene
+    else:
+        return None
 
 
 def find_variants(gene):
