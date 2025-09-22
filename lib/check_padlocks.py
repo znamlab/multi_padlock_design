@@ -330,12 +330,6 @@ cached_data = {}
 
 def loaddb(species, config):
     """Load formatted RefSeq header and sequence files"""
-    if species == "mouse":
-        s = 0
-    elif species == "human":
-        s = 1
-    else:
-        raise ValueError(f"Unknown species: {species}")
 
     if species not in cached_data:
         try:
@@ -652,7 +646,6 @@ dna_IMM1 = {
     "GG/GT": (4.1, 5.4),
     "GG/TA": (2.2, -1.1),
     "GG/TG": (2.2, -1.1),
-    "GG/TT": (1.6, -1.1),
     "GT/AC": (4.6, 6.6),
     "GT/AG": (4.5, 6.6),
     "GT/AT": (5.1, 6.6),
@@ -660,7 +653,6 @@ dna_IMM1 = {
     "GT/GG": (4.1, 5.0),
     "GT/GT": (4.6, 5.0),
     "GT/TC": (2.2, -1.5),
-    "GT/TG": (2.6, -1.5),
     "GT/TT": (2.0, -1.5),
     "TA/CA": (4.6, 6.6),
     "TA/CC": (4.8, 6.6),
@@ -685,7 +677,6 @@ dna_IMM1 = {
     "TG/CT": (5.0, 7.3),
     "TG/GA": (4.2, 5.4),
     "TG/GG": (4.2, 5.4),
-    "TG/GT": (4.7, 5.4),
     "TG/TA": (2.8, -1.1),
     "TG/TG": (2.8, -1.1),
     "TG/TT": (2.2, -1.1),
@@ -1100,12 +1091,12 @@ def process_dataframe_in_batches(
             # Run calc_tm_NN for the left and right sequences
             try:
                 tm_left_NN = calc_tm_NN(query_left, subject_left)
-            except Exception as e:
+            except Exception:
                 tm_left_NN = None
 
             try:
                 tm_right_NN = calc_tm_NN(query_right, subject_right)
-            except Exception as e:
+            except Exception:
                 tm_right_NN = None
 
             # Add results to the list
