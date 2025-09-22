@@ -167,20 +167,25 @@ def process_row(row, armlength=20, tm_threshold=37, precomputed_variants=None):
         ):
             valid_probe = True
 
-            # Check if variants are provided
-            if len(variants):
-                # If the hit is not in the variants, this is a non-specific hit
-                if hit not in variants:
-                    specific = False
-                else:
-                    # Otherwise, it's specific
-                    specific = True
         else:
             valid_probe = False  # Tm is below the threshold, invalid probe
     else:
         ligation_site_missmatch = (
             True  # There is a gap or mismatch near the ligation site
         )
+    # Check if variants are provided
+    if len(variants):
+        # If the hit is not in the variants, this is a non-specific hit
+        if hit not in variants:
+            specific = False
+        else:
+            # Otherwise, it's specific
+            specific = True
+    else:
+        if row.blast_target == row.gene:
+            specific = True
+        else:
+            specific = False
     return {
         "query_left": query_left,
         "query_right": query_right,
