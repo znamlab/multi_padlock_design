@@ -1,0 +1,16 @@
+name: multi_padlock_design
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - python=3.10
+  - bioconda::rnastructure
+  - pip
+  - numpy
+  - pandas
+  - tqdm
+  # any other conda-resolvable libs
+  - pip:
+      - znamutils @ git+ssh://git@github.com/znamlab/znamutils.git
+      - -e .

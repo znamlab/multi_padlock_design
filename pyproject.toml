@@ -1,0 +1,82 @@
+[project]
+name = "multi_padlock_design"
+authors = [{name = "Alexander Becalick", email= "alexander.becalick@crick.ac.uk"}]
+description = "Common utility functions for analysis"
+readme = "README.md"
+requires-python = ">=3.10.0"
+dynamic = ["version"]
+dependencies = [
+    "Bio",
+    "numpy",
+    "pandas",
+    "tqdm",
+    "znamutils @ git+ssh://git@github.com/znamlab/znamutils.git",
+]
+
+# Install the standalone root-level config.py as a top-level module so
+# `import config` works after installation without manual PYTHONPATH edits.
+
+license = {text = "MIT"}
+
+[tool.setuptools]
+py-modules = ["config"]
+
+[build-system]
+requires = [
+    "setuptools>=45",
+    "wheel",
+    "setuptools_scm[toml]>=6.2",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["multi_padlock_design", "lib"]
+exclude = ["tests", "docs*"]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-cov",
+  "coverage",
+  "tox",
+  "black",
+  "mypy",
+  "pre-commit",
+  "ruff",
+  "setuptools_scm",
+]
+
+[tool.pytest.ini_options]
+addopts = "--cov=multi_padlock_design"
+
+[tool.black]
+target-version = ['py39', 'py310', 'py311']
+skip-string-normalization = false
+line-length = 88
+
+[tool.setuptools_scm]
+
+[tool.ruff]
+line-length = 88
+exclude = ["__init__.py","build",".eggs"]
+select = ["I", "E", "F"]
+fix = true
+
+[tool.tox]
+legacy_tox_ini = """
+[tox]
+envlist = py{39,310,311}
+isolated_build = True
+
+[gh-actions]
+python =
+    3.9: py39
+    3.10: py310
+    3.11: py311
+
+[testenv]
+extras =
+    dev
+commands =
+    pytest -v --color=yes --cov=multi_padlock_design --cov-report=xml
+"""
