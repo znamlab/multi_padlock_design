@@ -100,6 +100,15 @@ def armlength(armlen):
         success = True
     return success
 
+def totallength(totallen):
+    """Total length of the target sequence"""
+    success = False
+    if not totallen > 40:
+        print("Total length too short. Should be at least 40. Try again")
+    else:
+        success = True
+    return success
+
 
 def spacing(interval):
     """Minimum distance between two targets"""
@@ -148,6 +157,7 @@ def getdesigninput():
     success_f = False  # fasta file
     success_d = False  # output directory
     success_a = False  # arm length
+    success_l = False # total length
     success_i = False  # interval between targets
     success_t = False  # Tm threshold
     success_n = False  # fixed number of output sequences
@@ -273,6 +283,12 @@ def getdesigninput():
     while not success_a:
         armlen = input("Length of one padlock arm (nt): ")
         success_a = armlength(int(armlen))
+    
+    while not success_l:
+        totallen = input("Total length of the target sequence (nt): ")
+        if totallen is None:
+            totallen = 2*armlen
+        success_l = armlength(int(totallen))
 
     while not success_i:
         interval = input("The minimum number of nucleotides between targets: ")
@@ -398,7 +414,7 @@ def getdesigninput():
                 "Number of sequences processed from the input file: %d\n" % len(headers)
             )
     return (
-        (species, int(armlen), int(interval), int(t1), int(t2), n),
+        (species, int(armlen), int(interval), int(t1), int(t2), n, int(totallen)),
         (outdir, outdir_temp),
         (genes, linkers, headers, variants),
         (basepos, headers_wpos, sequences, variants_matching_sequence),

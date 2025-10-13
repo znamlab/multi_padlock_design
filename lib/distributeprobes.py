@@ -10,6 +10,7 @@ def asmanyprobes(siteCandidates, originalmap, sequences, designpars):
     ProbesPos = []
     armlength = designpars[1]
     interval = designpars[2]
+    totallen = designpars[6]
     for i, sites in enumerate(siteCandidates):
         probes = []
         probespos = []
@@ -17,9 +18,9 @@ def asmanyprobes(siteCandidates, originalmap, sequences, designpars):
             current = siteCandidates[i][1][-1]
             seq = sequences[i]
             while current >= siteCandidates[i][0][0]:  # possible to squeeze more in
-                probes.append(seq[current : current + armlength * 2])
+                probes.append(seq[current : current + totallen])
                 probespos.append(current)
-                current -= armlength * 2 + interval
+                current -= totallen + interval
                 idx_max_start = np.amax(
                     np.append(np.nonzero(siteCandidates[i][0] <= current), -1)
                 )

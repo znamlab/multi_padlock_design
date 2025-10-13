@@ -1,6 +1,6 @@
 import os
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+BASE_DIR = os.path.abspath('/nemo/lab/znamenskiyp/home/shared/resources/')
 
 # maximum number of processes for parallel ClustalW
 max_MSA_processes = 32

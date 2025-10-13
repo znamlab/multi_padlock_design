@@ -27,7 +27,7 @@ if __name__ == "__main__":
 
         # Tm screening
         Tm, siteChopped = screenseq.thresholdtm(
-            designinput[1], designinput[2], outpars[1], designpars
+            designinput[1], designinput[2], outpars[1], designpars #armlen used, but not important, only total length
         )
 
         # Make blast database if it doesn't exist
@@ -43,7 +43,8 @@ if __name__ == "__main__":
             designpars[1],
             designinput[3],
             config.specificity_by_tm,
-        )
+            designpars[6] #total length
+        ) #used in readblastout
         createoutput.writetargetfile(
             designinput,
             siteCandidates,
@@ -51,6 +52,7 @@ if __name__ == "__main__":
             designpars[1],
             outpars,
             "3.AllSpecificTargets_",
+            designpars[6] #total length
         )
 
         # non-overlapping candidates

@@ -586,13 +586,14 @@ def fill_gaps(query, subject):
     return "".join(filled_query), "".join(filled_subject)
 
 
-def readblastout(file, armlength, variants, specificity_by_tm=False):
+def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
     """Read the results from blast
 
     Args:
         file: str, path to the blast output file
         armlength: int, length of the arm
         variants: list, list of variants to check for
+        totallen: int, total length of the probe
 
     Returns:
         specific: bool, True if the sequence is specific, False if not
@@ -711,7 +712,7 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
                                             # And if it's a perfect match mark it as mappable
                                             if (
                                                 float(scores[0]) == 100
-                                                and int(scores[1]) == 2 * armlength
+                                                and int(scores[1]) == totallen
                                             ):
                                                 mappable = True
                                     # If no variants are provided, check if the hit is the same as the input sequence
@@ -727,7 +728,7 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
                                         else:
                                             if (
                                                 float(scores[0]) == 100
-                                                and int(scores[1]) == 2 * armlength
+                                                and int(scores[1]) == totallen
                                             ):
                                                 mappable = True
                         else:
@@ -783,7 +784,7 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
                                     else:
                                         if (
                                             float(scores[0]) == 100
-                                            and int(scores[1]) == 2 * armlength
+                                            and int(scores[1]) == totallen
                                         ):
                                             mappable = True
                             else:
@@ -798,7 +799,7 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
                         # print("Q left:", query_left, "Q right:", query_right)
                         # print("S left:", subject_left, "S right:", subject_right)
                         # print(f"Transcript ID: {columns[1]}")
-                        # print(f"E-value: {columns[10]} \n")
+                        # print(f"E-value: {column s[10]} \n")
             # unmappable sequences will later be removed from final results
             if not mappable:
                 with open(file[0:-10] + ".fasta", "r") as f:
@@ -814,7 +815,7 @@ def readblastout(file, armlength, variants, specificity_by_tm=False):
 
 
 def getcandidates(
-    listSiteChopped, headers, dirnames, armlength, accession, specificity_by_tm
+    listSiteChopped, headers, dirnames, armlength, accession, specificity_by_tm, totallen
 ):
     """Get the candidates for the probes
 
@@ -824,6 +825,7 @@ def getcandidates(
         dirnames (list): list of directories
         armlength (int): arm length
         accession (list): list of accession numbers
+        totallen (int): total length of the probe
 
     Returns:
         siteCandidates (list): list of candidates
@@ -979,7 +981,7 @@ def getcandidates(
             for j, target in enumerate(sites):
                 fblast = fname + "_" + str(j + 1) + "_blast.txt"
                 blast_bw.append(
-                    readblastout(fblast, armlength, variants, specificity_by_tm)
+                    readblastout(fblast, armlength, variants, totallen, specificity_by_tm)
                 )
 
             # find sequences that are specific enough

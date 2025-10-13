@@ -43,7 +43,7 @@ def blastinfilename(dirname, filename):
 
 
 # (designinput, siteCandidates, Tm, designpars[1], outpars, '3.AllSpecificTargets_')
-def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
+def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname, totallen):
     """Write file with target sequence, Tm and start position
 
     Args:
@@ -53,6 +53,7 @@ def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
         armlength (int): arm length
         dirnames (list): list of directory names
         fname (str): file name
+        totallen (int): total length of the probe
     """
     t = dirnames[1].split("TempFolder")[1]
     headers = designinput[1]
@@ -66,7 +67,7 @@ def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname):
                     for k in range(sites[i][0][j], sites[i][1][j] + 1):
                         f.write(
                             "%s,%f,%d\n"
-                            % (sequences[i][k : k + armlength * 2], Tm[i][k], k + 1)
+                            % (sequences[i][k : k + totallen], Tm[i][k], k + 1)
                         )
             except:
                 pass
