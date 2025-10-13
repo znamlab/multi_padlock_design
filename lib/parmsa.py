@@ -5,6 +5,8 @@
 
 import subprocess
 import config
+from Bio import Phylo, SeqIO
+from pathlib import Path
 
 
 Processes = []
@@ -100,7 +102,7 @@ def readmsa(alnfile):
     return (name, baseindex, alnseq)
 
 
-def runningmsa(dirname, msa):
+def runningmsa(dirname, msa, round = None):
     """Check processes and distribute MSA jobs"""
     global Processes
     global NextProcess
@@ -113,27 +115,62 @@ def runningmsa(dirname, msa):
     while len(Processes) < config.max_MSA_processes and NextProcess < len(
         msa
     ):  # more to do and some spare slots
-        msafile = dirname + "/" + msa[NextProcess] + "_variants.fasta"
+        if round is not None:
+            msafile = dirname + "/" + msa[NextProcess] + f"_variants_round{round}.fasta"
+        else:
+            msafile = dirname + "/" + msa[NextProcess] + "_variants.fasta"
         runmsa(msafile)
 
 
-def continuemsa(dirname, msa):
+def continuemsa(dirname, msa, round = None, reset = False):
     """Continue MSA until all done"""
     global Processes
     global NextProcess
 
-    runningmsa(dirname, msa)
+    if reset:
+        Processes = []
+        NextProcess = 0
+
+    runningmsa(dirname, msa, round = round)
     while len(Processes) > 0:
-        runningmsa(dirname, msa)
+        runningmsa(dirname, msa, round= round)
 
     Names = []
     BasePos = []
     Seqs = []
     if NextProcess == len(msa) and len(Processes) == 0:
         for aln in msa:
-            alnfile = dirname + "/" + aln + "_variants.aln"
+            if round is not None:
+                alnfile = dirname + "/" + aln + f"_variants_round{round}.aln"
+            else:
+                alnfile = dirname + "/" + aln + "_variants.aln"
             tempout = readmsa(alnfile)
             Names.append(tempout[0])
             BasePos.append(tempout[1])
             Seqs.append(tempout[2])
     return (Names, BasePos, Seqs)
+
+def find_outgroup(treefile: str) -> str:
+    tree = Phylo.read(treefile, "newick")
+    terminals = tree.get_terminals()
+
+    max_dist = 0
+    outgroup = None
+    for t in terminals:
+        dist = sum(tree.distance(t, other) for other in terminals)
+        if dist > max_dist:
+            max_dist = dist
+            outgroup = t
+
+    print(f"Candidate outgroup: {outgroup.name}")
+    return outgroup.name
+
+
+def remove_outgroup(fasta_file: str, outgroup_id: str, round = 2) -> None:
+    out_file = fasta_file.replace(".fasta", f"_round{round}.fasta")
+
+    records = list(SeqIO.parse(fasta_file, "fasta"))
+    kept = [rec for rec in records if not rec.id.startswith(outgroup_id)]
+
+    SeqIO.write(kept, out_file, "fasta")
+    print(f"Saved {len(kept)} sequences to {out_file}, removed outgroup {outgroup_id}")

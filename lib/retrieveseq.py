@@ -5,8 +5,10 @@
 
 import os
 import config
+import time
 from lib import parmsa
 from lib.formatrefseq import fastadb
+from Bio import SeqIO
 
 
 Acronyms = []
@@ -125,20 +127,61 @@ def findseq(genes, hits, dirname):
             headersMSA.append(tempheader)
             variants.append([i[1:].split(".", 1)[0] for i in tempheader])
 
-    # run multiple sequence alignment if more than one variants are found for one gene
+    # run multiple sequence alignment if more than one variant is found for any gene
     if len(msa):
-        tempout = parmsa.continuemsa(dirname, msa)
-        print("MSA finished.")
-        for c, name in enumerate(tempout[0]):
-            if len(tempout[1][c]):
-                tempheader = headersMSA[c]
-                temp = [
-                    i for i in tempheader if name in i
-                ]  # first sequence in ClustalW output
-                headers.append(temp[0])
-                basepos.append(tempout[1][c])
-                targets.append(tempout[2][c])
-            else:
-                nocommon.append(msa[c])
+        # process each gene independently
+        for gi, gene in enumerate(msa):
+            # headers for all variants of this gene (written earlier)
+            tempheader = headersMSA[gi]
+
+            round_no = 1  # first run uses *_variants.fasta / .aln / .dnd
+
+            def fasta_for_round(r: int) -> str:
+                return f"{dirname}/{gene}_variants.fasta" if r == 1 else f"{dirname}/{gene}_variants_round{r}.fasta"
+
+            def dnd_for_round(r: int) -> str:
+                return f"{dirname}/{gene}_variants.dnd" if r == 1 else f"{dirname}/{gene}_variants_round{r}.dnd"
+
+            # how many variants do we currently have?
+            n_left = sum(1 for _ in SeqIO.parse(fasta_for_round(round_no), "fasta"))
+
+            while True:
+                # run MSA for this gene only (pass [gene] so continuemsa handles one job)
+                out = parmsa.continuemsa(dirname, [gene],
+                                        round=None if round_no == 1 else round_no,
+                                        reset=True)
+                # out = (Names, BasePos, Seqs); each is length 1 because we passed [gene]
+                name_c, basepos_c, seqs_c = out[0][0], out[1][0], out[2][0]
+
+                if len(basepos_c):  # consensus found
+                    # pick the header that matches the first sequence used by ClustalW
+                    # (the code relies on matching by substring of the chosen name)
+                    chosen = [h for h in tempheader if name_c in h]
+                    if not chosen:
+                        # fallback: just take the first header if matching fails
+                        chosen = [tempheader[0]]
+                    headers.append(chosen[0])
+                    basepos.append(basepos_c)
+                    targets.append(seqs_c)
+                    break
+
+                # no consensus: stop if ≤ 2 variants remain
+                if n_left <= 2:
+                    nocommon.append(gene)
+                    break
+
+                # drop one outgroup and try again
+                print(f"[{gene}] No consensus, removing outgroup (round {round_no} → {round_no+1})")
+                treefile = dnd_for_round(round_no)
+                outgroup = parmsa.find_outgroup(treefile)
+
+                in_fa = fasta_for_round(round_no)
+                round_no += 1
+                parmsa.remove_outgroup(in_fa, outgroup, round=round_no)
+
+                # update remaining variants
+                n_left = sum(1 for _ in SeqIO.parse(fasta_for_round(round_no), "fasta"))
+
+        print("MSA finished across genes.")
 
     return headers, basepos, targets, msa, nocommon, variants
