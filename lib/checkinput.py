@@ -320,17 +320,32 @@ def getdesigninput():
         # find genes in the database
         hits = retrieveseq.querygenes(genes, species)
 
-        # if any gene is not found in the RefSeq acronym list, write to file
+        # if any gene is not found in the RefSeq acronym list, try to translate
         nohit = [i for i in range(len(genes)) if len(hits[i]) == 0]
         if len(nohit):
-            with open(
-                os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
-            ) as f:
-                for i in nohit[::-1]:
-                    f.write("%s\n" % genes[i])
-                    del genes[i]  # remove genes that are not found
-                    del linkers[i]
-                    del hits[i]
+            # try to convert gene acronyms using Ensembl dictionary
+            translated_id = get_gene_synonyms(species, genes[0]) #pending me changing the csv generating code TODO
+            if translated_id is not None:
+                print(f"Converted {genes} to {translated_id}")
+                genes[0] = translated_id
+                hits = retrieveseq.querygenes([translated_id], species)
+                with open(
+                    os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
+                ) as f:
+                    f.write(
+                        "Some gene acronyms were converted using Ensembl synonym dictionary \n"
+                    )
+                    f.write("%s -> %s\n" % (genes[0], f"{translated_id}"))
+                    f.write("Please make sure these are the intended genes.\n\n")
+            else:
+                with open(
+                    os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
+                ) as f:
+                    for i in nohit[::-1]:
+                        f.write("%s\n" % genes[i])
+                        del genes[i]  # remove genes that are not found
+                        del linkers[i]
+                        del hits[i]
 
         # find sequences (MSA included if multiple variants)
         headers, basepos, sequences, msa, nocommon, variants = retrieveseq.findseq(
@@ -430,3 +445,45 @@ def checkformat(headers):
         else:
             c += 1
     return fmt
+
+def get_gene_synonyms(
+    species: str,
+    symbol: str,
+    ensembl_headers = Path('/nemo/lab/znamenskiyp/home/shared/resources/ensembl/mouse.allheaders.txt'),
+    ensembl_synonym_dict = Path('/nemo/lab/znamenskiyp/home/shared/resources/synonyms/synonyms_20251007_ GRCm39.txt')
+):
+    ensembl_id = None
+
+    ''' Given a species and a gene symbol (which may be an official symbol or a synonym),
+        look up the official gene symbol using Ensembl data files.
+        Returns the official gene symbol, or None if not found.
+    '''
+    
+# --- look up synonym in your dictionary --- 
+    with open(ensembl_synonym_dict) as f:
+        for line in f:
+            parts = line.strip().split("\t")
+            # guard against short lines
+            if len(parts) < 6:
+                continue
+            # check if the symbol matches exactly any of the synonym fields
+            if symbol in parts:
+                ensembl_id = parts[0]
+                break
+    
+    if ensembl_id is None:
+        print(f"Synonym {symbol} not found in synonym dict")
+        return None
+    
+    print(f"Ensembl ID for {symbol} in {species}: {ensembl_id}")
+    
+    # --- look up the official gene symbol in the headers ---
+    with open(ensembl_headers) as f:
+        for line in f:
+            if f"gene:{ensembl_id}" in line:
+                parts = line.strip().split(" ")
+                for part in parts:
+                    if part.startswith("gene_symbol:"):
+                        return part.split(":")[1]
+    
+    return None
