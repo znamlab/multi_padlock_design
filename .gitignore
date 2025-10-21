@@ -2,7 +2,9 @@
 **.pyc
 config.py
 *.fasta
+*.fa
 *.csv
+*.pkl
 *.txt
 *xlsx
 **/refseq/
