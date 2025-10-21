@@ -1,23 +1,34 @@
 from __future__ import annotations
 
+import math
 import os
+import pickle
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import warnings
 from collections import defaultdict
 from concurrent.futures import FIRST_COMPLETED, ProcessPoolExecutor, wait
-from typing import Dict, List, Tuple
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-import config
 import numpy as np
 import pandas as pd
 from Bio.Seq import Seq
+
+try:
+    import config
+except ModuleNotFoundError:
+    from multi_padlock_design import config
+
 from lib import formatrefseq
 from lib.readblast import calc_tm_NN, fill_gaps, has_gap_or_mismatch, split_arms
 from tqdm import tqdm
 from tqdm.auto import tqdm as _tqdm
+
+from znamutils import slurm_it
 
 
 def find_off_targets(gene, blast_query_path, armlength=20):
@@ -73,7 +84,8 @@ def find_off_targets(gene, blast_query_path, armlength=20):
                 warnings.warn(
                     f"Failed to map gene using annotation_file ({e}); using original gene name."
                 )
-        variants = find_variants(gene)
+    # Trigger variant discovery (result unused here; retained for side effects or future use)
+    find_variants(gene)
     # Exclude known variants
     # df = df.loc[~(df[1].isin(variants))]
 
@@ -1176,7 +1188,7 @@ def process_dataframe_in_batches(
                 valid_probe = (
                     (tm_left >= tm_threshold)
                     and (tm_right >= tm_threshold)
-                    and (row.ligation_site_missmatch == False)
+                    and (not row.ligation_site_missmatch)
                 )
             else:
                 valid_probe = False
@@ -1188,7 +1200,7 @@ def process_dataframe_in_batches(
                 valid_probe_NN = (
                     (tm_left_NN >= tm_threshold)
                     and (tm_right_NN >= tm_threshold)
-                    and (row.ligation_site_missmatch == False)
+                    and (not row.ligation_site_missmatch)
                 )
             else:
                 valid_probe_NN = False
@@ -1876,3 +1888,398 @@ def annotate_with_thermo(
     out["heterodimer_candidate_partners"] = cand_names
 
     return out
+
+
+# =============================================================
+# Exhaustive heterodimer thermodynamics (all unique unordered pairs)
+# Batched across SLURM jobs using @slurm_it
+# =============================================================
+
+
+@slurm_it(
+    conda_env="multi-padlock-design",
+    from_imports={"lib.check_padlocks": ("run_exhaustive_heterodimer_batch")},
+)
+def run_exhaustive_heterodimer_batch(
+    probe_df_path: str,
+    output_dir: str,
+    batch_index: int,
+    n_batches: int = 1000,
+    sequence_col: str = "padlock",
+    name_col: Optional[str] = None,
+    overwrite: bool = False,
+):
+    """Compute duplex ΔG for one batch of an exhaustive enumeration of all
+    unique unordered probe pairs.
+
+    Pair indexing strategy:
+        For N sequences, total M = N*(N-1)/2 pairs (i<j) are linearized
+        in lexicographic order of (i,j). The interval [0, M) is split
+        into n_batches ~equal contiguous chunks; this batch processes
+        the slice assigned by batch_index.
+
+    Output:
+        A pickle containing a DataFrame with columns:
+            i, j, probe_i, probe_j, dg
+        saved to: {output_dir}/heterodimer_pairs_part_{batch_index:04d}.pkl
+    """
+    output_dir = Path(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_file = output_dir / f"heterodimer_pairs_part_{batch_index:04d}.pkl"
+    if out_file.exists() and not overwrite:
+        return str(out_file)
+
+    # Load probe dataframe (csv or pickle)
+    probe_df_path = Path(probe_df_path)
+    if probe_df_path.suffix.lower() in {".pkl", ".pickle"}:
+        df = pd.read_pickle(probe_df_path)
+    else:
+        df = pd.read_csv(probe_df_path)
+
+    if sequence_col not in df.columns:
+        raise ValueError(f"Sequence column '{sequence_col}' not found")
+
+    if name_col is None:
+        # try common name columns
+        for cand in ["name", "probe_name", "id", "gene"]:
+            if cand in df.columns:
+                name_col = cand
+                break
+    if name_col is None:
+        name_col = "_autoname"
+        df = df.copy()
+        df[name_col] = [f"probe_{i}" for i in range(len(df))]
+
+    seqs = df[sequence_col].map(clean_seq).tolist()
+    names = df[name_col].tolist()
+    N = len(seqs)
+    if N < 2:
+        raise ValueError("Need at least two probes")
+
+    total_pairs = N * (N - 1) // 2
+    n_batches = min(n_batches, total_pairs) if total_pairs else 0
+    if n_batches == 0:
+        raise ValueError("No pairs to enumerate")
+    if batch_index >= n_batches:
+        # Over-provisioned batch index: write empty file sentinel
+        with out_file.open("wb") as f:
+            pickle.dump(pd.DataFrame([]), f)
+        return str(out_file)
+
+    # Determine k-range for this batch
+    per_batch = math.ceil(total_pairs / n_batches)
+    start_k = batch_index * per_batch
+    end_k = min(start_k + per_batch, total_pairs)
+    if start_k >= end_k:
+        with out_file.open("wb") as f:
+            pickle.dump(pd.DataFrame([]), f)
+        return str(out_file)
+
+    try:
+        ensure_bins()
+    except Exception:
+        pass  # allow fallback heuristic if binaries unavailable
+
+    def pair_generator(N: int, start_k: int, end_k: int):
+        """Yield (i,j) pairs for linear indices in [start_k,end_k)."""
+        # Advance to starting k
+        k = 0
+        i = 0
+        remaining = start_k
+        while i < N - 1:
+            block = N - i - 1
+            if remaining < block:
+                j = i + 1 + remaining
+                k = start_k
+                break
+            remaining -= block
+            i += 1
+        else:
+            return
+        while k < end_k and i < N - 1:
+            yield i, j
+            k += 1
+            j += 1
+            if j >= N:
+                i += 1
+                j = i + 1
+
+    # ---------------------------------------------------------
+    # Progress over this batch's share of pairs
+    # ---------------------------------------------------------
+    batch_total = end_k - start_k
+    # For SLURM .out logs we avoid overly chatty output: set a min interval.
+    # tqdm will rewrite the same line on TTY; on non‑TTY (captured) it still
+    # prints periodic refreshes controlled by mininterval.
+    # If the stream is not a TTY we still keep it enabled so the .out file
+    # accumulates occasional progress lines.
+    try:
+        _ = sys.stdout.isatty()
+    except Exception:
+        pass
+    # Heuristic miniters: aim for at most ~200 updates.
+    miniters = max(1, batch_total // 200) if batch_total > 0 else 1
+    pbar = tqdm(
+        total=batch_total,
+        desc=f"heterodimer batch {batch_index+1}/{n_batches}",
+        unit="pair",
+        smoothing=0.0,
+        mininterval=30.0,  # seconds between forced refreshes
+        miniters=miniters,
+        dynamic_ncols=False,
+        disable=False,  # keep enabled to write progress lines to SLURM log
+        ascii=True,
+        leave=False,
+    )
+
+    records = []
+    for i, j in pair_generator(N, start_k, end_k):
+        s1 = seqs[i]
+        s2 = seqs[j]
+
+        dg = rnastructure_duplex_dg(s1, s2)
+
+        records.append(
+            {"i": i, "j": j, "probe_i": names[i], "probe_j": names[j], "dg": dg}
+        )
+        pbar.update(1)
+    pbar.close()
+
+    part_df = pd.DataFrame(records)
+    with out_file.open("wb") as f:
+        pickle.dump(part_df, f)
+    return str(out_file)
+
+
+@slurm_it(
+    conda_env="multi-padlock-design",
+    from_imports={"lib.check_padlocks": ("aggregate_exhaustive_heterodimer_results",)},
+)
+def aggregate_exhaustive_heterodimer_results(
+    output_dir: str,
+    probe_df_path: str,
+    sequence_col: str = "padlock",
+    matrix_pickle: Optional[str] = None,
+    overwrite: bool = True,
+):
+    """Aggregate batch part files into a symmetric ΔG matrix and save pickle.
+
+    The pickle contains a dict with keys: matrix (NxN float64),
+    names (list), sequence_col.
+    """
+    output_dir = Path(output_dir)
+    if matrix_pickle is None:
+        matrix_pickle = output_dir / "heterodimer_dg_matrix.pkl"
+    else:
+        matrix_pickle = Path(matrix_pickle)
+    if matrix_pickle.exists() and not overwrite:
+        return str(matrix_pickle)
+
+    probe_df_path = Path(probe_df_path)
+    if probe_df_path.suffix.lower() in {".pkl", ".pickle"}:
+        df = pd.read_pickle(probe_df_path)
+    else:
+        df = pd.read_csv(probe_df_path)
+    if sequence_col not in df.columns:
+        raise ValueError(f"Sequence column '{sequence_col}' not found")
+    # Determine name column
+    name_col = None
+    for c in ["name", "probe_name", "id", "gene", "_autoname"]:
+        if c in df.columns:
+            name_col = c
+            break
+    if name_col is None:
+        name_col = "_autoname"
+        df[name_col] = [f"probe_{i}" for i in range(len(df))]
+
+    names = df[name_col].tolist()
+    N = len(names)
+    matrix = np.full((N, N), np.nan, dtype=float)
+
+    part_files = sorted(output_dir.glob("heterodimer_pairs_part_*.pkl"))
+    if not part_files:
+        raise FileNotFoundError("No part files found to aggregate")
+
+    # First pass: compute total rows (for progress total)
+    total_rows = 0
+    for pf in part_files:
+        try:
+            with pf.open("rb") as f:
+                part_df = pickle.load(f)
+        except Exception:
+            continue
+        if isinstance(part_df, pd.DataFrame):
+            total_rows += len(part_df)
+
+    # Progress bar for aggregation; sparse refresh for SLURM logs
+    try:
+        _ = sys.stdout.isatty()
+    except Exception:
+        pass
+    pbar = tqdm(
+        total=total_rows,
+        desc="aggregate heterodimer",
+        unit="pair",
+        mininterval=30.0,
+        smoothing=0.0,
+        ascii=True,
+        disable=False,
+        leave=False,
+    )
+
+    for pf in part_files:
+        try:
+            with pf.open("rb") as f:
+                part_df = pickle.load(f)
+        except Exception:
+            continue
+        if not isinstance(part_df, pd.DataFrame):
+            continue
+        it = part_df.itertuples()
+        for row in it:
+            i = row.i
+            j = row.j
+            dg = row.dg
+            if 0 <= i < N and 0 <= j < N:
+                matrix[i, j] = dg
+                matrix[j, i] = dg
+            pbar.update(1)
+    pbar.close()
+    np.fill_diagonal(matrix, 0.0)
+
+    payload = {"matrix": matrix, "names": names, "sequence_col": sequence_col}
+    with open(matrix_pickle, "wb") as f:
+        pickle.dump(payload, f)
+    return str(matrix_pickle)
+
+
+def submit_exhaustive_heterodimer_jobs(
+    probe_df_path: str,
+    output_dir: str,
+    slurm_folder: str,
+    n_batches: int = 1000,
+    time: str = "12:00:00",
+    mem: str = "8G",
+    partition: Optional[str] = "ncpu",
+    cpus_per_task: int = 1,
+    sequence_col: str = "padlock",
+    dependency_aggregate_time: str = "02:00:00",
+    dependency_aggregate_mem: str = "32G",
+    dry_run: bool = False,
+):
+    """Submit 1000 (or fewer if total pairs < 1000) exhaustive heterodimer jobs
+    plus a final aggregation job dependent on all of them.
+
+    Returns (batch_job_ids, aggregate_job_id). If dry_run=True, returns ([], None).
+    """
+    probe_df_path = Path(probe_df_path)
+    if probe_df_path.suffix.lower() in {".pkl", ".pickle"}:
+        df = pd.read_pickle(probe_df_path)
+    else:
+        df = pd.read_csv(probe_df_path)
+    if sequence_col not in df.columns:
+        raise ValueError(f"Sequence column '{sequence_col}' not found")
+    N = len(df)
+    if N < 2:
+        raise ValueError("Need at least two probes")
+    total_pairs = N * (N - 1) // 2
+    effective_batches = min(n_batches, total_pairs)
+    if effective_batches < n_batches:
+        n_batches = effective_batches
+
+    if dry_run:
+        print(f"[DRY RUN] N={N} total_pairs={total_pairs} n_batches={n_batches}")
+        return [], None
+
+    slurm_opts_batch = {
+        "time": time,
+        "mem": mem,
+        "cpus-per-task": cpus_per_task,
+    }
+    if partition:
+        slurm_opts_batch["partition"] = partition
+
+    slurm_opts_agg = {
+        "time": dependency_aggregate_time,
+        "mem": dependency_aggregate_mem,
+        "cpus-per-task": 1,
+    }
+    if partition:
+        slurm_opts_agg["partition"] = partition
+
+    # Submit batched jobs (one per batch_index) explicitly
+    batch_job_ids = []
+    for i in range(n_batches):
+        jid = run_exhaustive_heterodimer_batch(
+            probe_df_path=str(probe_df_path),
+            output_dir=str(output_dir),
+            batch_index=i,
+            n_batches=n_batches,
+            sequence_col=sequence_col,
+            slurm_folder=slurm_folder,
+            scripts_name=f"exhaustive_heterodimer_batch_{i:04d}",
+            slurm_options=slurm_opts_batch,
+            use_slurm=True,
+        )
+        batch_job_ids.append(jid)
+
+    # Aggregation job depends on all batch jobs
+    aggregate_job_id = aggregate_exhaustive_heterodimer_results(
+        output_dir=str(output_dir),
+        probe_df_path=str(probe_df_path),
+        sequence_col=sequence_col,
+        slurm_folder=slurm_folder,
+        scripts_name="exhaustive_heterodimer_aggregate",
+        job_dependency=batch_job_ids,
+        slurm_options=slurm_opts_agg,
+        use_slurm=True,
+    )
+    return batch_job_ids, aggregate_job_id
+
+
+def main_exhaustive():  # CLI helper
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Submit exhaustive heterodimer thermodynamics jobs"
+    )
+    parser.add_argument(
+        "probe_df_path", type=str, help="Path to probe dataframe (csv/pkl)"
+    )
+    parser.add_argument(
+        "--output-dir", required=True, type=str, help="Directory for batch outputs"
+    )
+    parser.add_argument(
+        "--slurm-folder",
+        required=True,
+        type=str,
+        help="Existing folder for SLURM scripts & logs",
+    )
+    parser.add_argument(
+        "--n-batches",
+        type=int,
+        default=1000,
+        help="Target number of batches (default 1000)",
+    )
+    parser.add_argument("--sequence-col", type=str, default="padlock")
+    parser.add_argument("--partition", type=str, default=None)
+    parser.add_argument("--time", type=str, default="12:00:00")
+    parser.add_argument("--mem", type=str, default="8G")
+    parser.add_argument("--dry-run", action="store_true")
+    args = parser.parse_args()
+
+    submit_exhaustive_heterodimer_jobs(
+        probe_df_path=args.probe_df_path,
+        output_dir=args.output_dir,
+        slurm_folder=args.slurm_folder,
+        n_batches=args.n_batches,
+        time=args.time,
+        mem=args.mem,
+        partition=args.partition,
+        sequence_col=args.sequence_col,
+        dry_run=args.dry_run,
+    )
+
+
+if __name__ == "__main__":
+    main_exhaustive()

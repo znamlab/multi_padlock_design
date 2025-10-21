@@ -1,11 +1,15 @@
 # fasta_db.py
 
+import gzip
 import os
 import re
-import gzip
 import subprocess
 from typing import Iterable, List, Tuple, Union
-import config
+
+try:
+    import config
+except ModuleNotFoundError:
+    from multi_padlock_design import config
 
 
 # ---------------------------
@@ -164,9 +168,11 @@ def fastadb(
             fh.write(h + "\n")
             fs.write(s + "\n")
 
-    with open(selh_path, "w") as fh, open(sels_path, "w") as fs, open(
-        selfa_path, "w"
-    ) as ff:
+    with (
+        open(selh_path, "w") as fh,
+        open(sels_path, "w") as fs,
+        open(selfa_path, "w") as ff,
+    ):
         for h, s in zip(sel_headers, sel_seqs):
             fh.write(h + "\n")
             fs.write(s + "\n")
