@@ -683,7 +683,20 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                     # First check if variants are provided
                                     if len(variants):
                                         # If they are and the hit is not in them, this is a non specific hit
-                                        if hit not in variants:
+                                        #check if we are using Ensembl ID's because versions in the IDs are tricky
+                                        if config.reference_transcriptome == "ensembl":
+                                            # Strip version suffixes for comparison
+                                            hit_core = hit.split('.')[0]
+                                            if isinstance(variants[0], list): #multiple variants
+                                                variant_cores = [v.split('.')[0] for v in variants[0]]
+                                            elif isinstance(variants[0], str): #one variant
+                                                variant_cores = [variants[0].split('.')[0]]
+                                        else:
+                                            #no version number on refseq so just compare directly
+                                            hit_core = hit
+                                            variant_cores = variants if isinstance(variants, list) else [variants]
+                                        if hit_core not in variant_cores:
+                                            # Log non-specific hits to a file
                                             if isinstance(variants, list):
                                                 with open(
                                                     os.path.join(
