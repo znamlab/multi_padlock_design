@@ -370,16 +370,20 @@ def getdesigninput():
         [geneorder.append(i) for i in idxmsa]
         linkers = [linkers[i] for i in geneorder]
         genes = [genes[i] for i in geneorder]
+        full_variants = variants.copy()
         variants = [variants[i] for i in geneorder]
 
         # replicates variants so that they match headers_wpos
         variants_matching_sequence = []
-        for c, i in enumerate(variants):
-            if isinstance(basepos[c][0], int):
-                variants_matching_sequence.append(i)
-            else:
-                for j in range(0, len(basepos[c])):
+        if config.reference_transcriptome == "ensembl":
+            variants_matching_sequence = [full_variants] #the reason being: we don't want to exclude the rest as targets
+        else:
+            for c, i in enumerate(variants):
+                if isinstance(basepos[c][0], int):
                     variants_matching_sequence.append(i)
+                else:
+                    for j in range(0, len(basepos[c])):
+                        variants_matching_sequence.append(i)
 
         # write found sequences to output file
         with open(os.path.join(outdir, "1.InputSeq_" + t + ".fasta"), "w") as f:

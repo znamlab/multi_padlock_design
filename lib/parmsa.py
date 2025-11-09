@@ -116,9 +116,16 @@ def runningmsa(dirname, msa, round = None):
         msa
     ):  # more to do and some spare slots
         if round is not None:
-            msafile = dirname + "/" + msa[NextProcess] + f"_variants_round{round}.fasta"
+            if config.reference_transcriptome == "ensembl": # Account for GENCODE filtering
+                msafile = dirname + "/" + msa[NextProcess] + f"_allowed_variants_round{round}.fasta"
+            else:
+                msafile = dirname + "/" + msa[NextProcess] + f"_variants_round{round}.fasta"
         else:
-            msafile = dirname + "/" + msa[NextProcess] + "_variants.fasta"
+            if config.reference_transcriptome == "ensembl": # Account for GENCODE filtering
+                msafile = dirname + "/" + msa[NextProcess] + "_allowed_variants.fasta"
+            else:  
+                msafile = dirname + "/" + msa[NextProcess] + "_variants.fasta"
+        print(msafile)
         runmsa(msafile)
 
 
@@ -141,9 +148,15 @@ def continuemsa(dirname, msa, round = None, reset = False):
     if NextProcess == len(msa) and len(Processes) == 0:
         for aln in msa:
             if round is not None:
-                alnfile = dirname + "/" + aln + f"_variants_round{round}.aln"
+                if config.reference_transcriptome == "ensembl":
+                    alnfile = dirname + "/" + aln + f"_allowed_variants_round{round}.aln"
+                else:
+                    alnfile = dirname + "/" + aln + f"_variants_round{round}.aln"
             else:
-                alnfile = dirname + "/" + aln + "_variants.aln"
+                if config.reference_transcriptome == "ensembl":
+                    alnfile = dirname + "/" + aln + "_allowed_variants.aln"
+                else:
+                    alnfile = dirname + "/" + aln + "_variants.aln"
             tempout = readmsa(alnfile)
             Names.append(tempout[0])
             BasePos.append(tempout[1])
@@ -167,7 +180,16 @@ def find_outgroup(treefile: str) -> str:
 
 
 def remove_outgroup(fasta_file: str, outgroup_id: str, round = 2) -> None:
-    out_file = fasta_file.replace(".fasta", f"_round{round}.fasta")
+    """Remove outgroup sequence from fasta file and save to new file"""
+
+    if fasta_file.endswith(f"_round{round-1}.fasta"): #for rounds other than 1
+        namefasta = fasta_file[: -len(f"_round{round-1}.fasta")]
+    elif config.reference_transcriptome == "ensembl" and fasta_file.endswith("allowed_variants.fasta"): #for round 1 with GENCODE filtering
+        namefasta = fasta_file[:-len(".fasta")]
+    elif config.reference_transcriptome != 'ensembl' and fasta_file.endswith("variants.fasta"): #for round 1, no filters
+        namefasta = fasta_file[:-len(".fasta")]
+        
+    out_file = namefasta +  f"_round{round}.fasta"
 
     records = list(SeqIO.parse(fasta_file, "fasta"))
     kept = [rec for rec in records if not rec.id.startswith(outgroup_id)]
