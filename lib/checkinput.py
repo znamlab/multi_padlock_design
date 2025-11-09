@@ -6,6 +6,7 @@ from lib import readfastafile
 from lib import retrieveseq
 from lib import createoutput
 from pathlib import Path
+import config
 
 import pandas as pd
 
@@ -161,6 +162,7 @@ def getdesigninput():
     success_i = False  # interval between targets
     success_t = False  # Tm threshold
     success_n = False  # fixed number of output sequences
+    success_type = False  # input type"
 
     while not success_d:
         outdir = input("Output directory: ")
@@ -403,6 +405,14 @@ def getdesigninput():
         )
         headers_wpos = temp[1]
         sequences = temp[2]
+    while not success_type:
+        input_type = input(
+            "Is the input a gene list or a fasta file? (type 'csv' or 'fasta'): "
+        ).lower()
+        if input_type in ["csv", "fasta"]:
+            success_type = True
+        else:
+            print("Please type 'csv' or 'fasta'")
 
     # write an overview log file
     with open(
@@ -434,7 +444,7 @@ def getdesigninput():
             )
     return (
         (species, int(armlen), int(interval), int(t1), int(t2), n, int(totallen)),
-        (outdir, outdir_temp),
+        (outdir, outdir_temp, input_type),
         (genes, linkers, headers, variants),
         (basepos, headers_wpos, sequences, variants_matching_sequence),
     )
