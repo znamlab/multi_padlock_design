@@ -8,6 +8,7 @@ import re
 from Bio.SeqUtils import MeltingTemp as mt
 from Bio.Seq import Seq
 import pandas as pd
+import config
 
 notmapped = []
 funmap = []
@@ -1003,6 +1004,7 @@ def getcandidates(
             sitespecific = tempCandidates[idxspecific]
 
             # write unmappable sites
+            print(f'Not mapped before assignment: {notmapped}')
             notmapped = tempCandidates[notmapped]
             recorded = False
             temp = None
