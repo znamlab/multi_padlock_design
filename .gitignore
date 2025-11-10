@@ -10,7 +10,6 @@ config.py
 **/refseq/
 **/data/
 **/.vscode/
-*.ipynb
 *.dnd
 *.aln
 /ensembl

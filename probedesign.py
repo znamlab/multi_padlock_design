@@ -12,13 +12,15 @@ from lib import distributeprobes
 from lib import finalizeprobes
 import config
 
+MODE = 'STARBARseq' #'STARBARseq' or 'BARseq'
+
 
 if __name__ == "__main__":
     try:
         # get keyboard inputs and prepare sequences
 
-        # design_pars : (species, int(armlen), int(interval), int(t1), int(t2), number of probes per gene)
-        # outpars : (outdir, outdir_temp)
+        # design_pars : (species, int(armlen), int(interval), int(t1), int(t2), number of probes per gene, total length)
+        # outpars : (outdir, outdir_temp, input_type)
         # genepars : (genes, linkers, headers, variants)
         # designinput : (basepos, headers_wpos, sequences, variants_matching_sequence)
 
@@ -27,7 +29,7 @@ if __name__ == "__main__":
 
         # Tm screening
         Tm, siteChopped = screenseq.thresholdtm(
-            designinput[1], designinput[2], outpars[1], designpars
+            designinput[1], designinput[2], outpars[1], designpars #armlen used, but not important, only total length
         )
 
         # Make blast database if it doesn't exist
@@ -43,7 +45,9 @@ if __name__ == "__main__":
             designpars[1],
             designinput[3],
             config.specificity_by_tm,
-        )
+            designpars[6] #total length
+        ) #used in readblastout
+        print(f'Not mapped genes after candidate assignment: {notMapped}')
         createoutput.writetargetfile(
             designinput,
             siteCandidates,
@@ -51,6 +55,7 @@ if __name__ == "__main__":
             designpars[1],
             outpars,
             "3.AllSpecificTargets_",
+            designpars[6] #total length
         )
 
         # non-overlapping candidates
@@ -91,7 +96,7 @@ if __name__ == "__main__":
             finallist[1],
             finallist[2],
             finallist[3],
-            outpars,
+            outpars, 
             designpars[1],
             "5.ProbesDBMappable_",
         )
@@ -99,7 +104,7 @@ if __name__ == "__main__":
         # prioritize sequences without homopolymers and randomly select the fixed number of probes per gene (if applicable)
         if len(designpars[5]):
             sublist = finalizeprobes.selectprobes(
-                int(designpars[5]), finallist, genepars[2], designpars[1]
+                int(designpars[5]), finallist, genepars[2], designpars[1], outpars
             )
             createoutput.writeprobefile(
                 genepars[0],

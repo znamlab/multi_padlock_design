@@ -4,9 +4,13 @@
 import random
 from lib.screenseq import chopseq
 from Bio import SeqIO
+from difflib import SequenceMatcher
 import config
 import pandas as pd
 import ast
+import os
+import re
+import glob
 
 
 def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChopped):
@@ -44,6 +48,8 @@ def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChoppe
             targetposnew.append(temppos)
             notMappednew.append(tempnomap)
             Tmnew.append(temptm)
+
+        print(f'Not mapped after position correction: {notMappednew}')
 
     return targetsnew, targetposnew, notMappednew, Tmnew
 
@@ -93,7 +99,7 @@ def removeunmapped(notmapped, targetpos, headers, targets, Tm, probes):
     return (probes, Tm, targetpos, targets)
 
 
-def selectprobes(n, finals, headers, armlength):
+def selectprobes(n, finals, headers, armlength, outpars):
     """Prioritize probes with no homopolymer sequences and choose randomly n candidates per region
 
     Args:
@@ -101,6 +107,7 @@ def selectprobes(n, finals, headers, armlength):
         finals (list): list of final probes
         headers (list): list of headers
         armlength (int): arm length
+        outpars (list): list of output parameters
 
     Returns:
         probes (list): list of final probes
@@ -109,6 +116,9 @@ def selectprobes(n, finals, headers, armlength):
         targets (list): list of targets
         filtered_regions (list): list of binding regions
     """
+    input_type = outpars[2]
+    tempdir = outpars[1]
+
     probes = finals[0]
     Tm = finals[1]
     targetpos = finals[2]
@@ -122,6 +132,7 @@ def selectprobes(n, finals, headers, armlength):
     print(f"Filtered Regions: {filtered_regions}")
 
     for i, header in enumerate(headers):
+        fullheader = header #keep full header for gene ID
         first = header.split()[0]  # take the first token
         header = first.lstrip(">")  # only strip '>' if it exists
         # Compute probe binding end positions for classification
@@ -177,9 +188,9 @@ def selectprobes(n, finals, headers, armlength):
                 else:
                     regions = [None] * len(targetpos[i])
 
-        else:
+        elif input_type == "fasta":
             # look up CDS from Ensembl cds/cdna files by transcript id
-            transcript = header[1:].split(" ")[0]
+            transcript = header
             cds_file = config.cds_file
             cdna_file = config.cdna_file
             df = find_start_end_sites(cds_file, cdna_file, transcript)
@@ -192,7 +203,47 @@ def selectprobes(n, finals, headers, armlength):
                     )
             else:
                 regions = [None] * len(targetpos[i])
-
+        elif input_type == "csv":
+            #get the ensembl gene symbol
+            print(fullheader)
+            gene_symbol = get_gene_symbol(fullheader)
+            print(f"gene symbol: {gene_symbol}")
+            #find entries in the cds database for this gene symbol
+            cds_headers = str(config.cds_file) + '_headers.txt'
+            print(cds_headers)
+            cds_entries =  find_cds_entries(cds_headers, gene_symbol)
+            print(f'cds entries: {cds_entries}')
+            #Iterate, check if it's in the variant list, if it's not, bad luck, complain. 
+            #define variant list
+            variants = find_latest_variants_fasta(tempdir)
+            print(variants)
+            for cds_variants in cds_entries:
+                variant_id = cds_variants.split()[0].lstrip('>')
+                if variant_id in variants:
+                    print(f'Found valid (some annotated cds) variant: {variant_id}')
+                    reference_variant = variant_id
+                    break
+                else:
+                    print(f'No valid (some annotated cds) variant for: {variant_id}')
+            #map the target to the reference variant sequence
+            reference_variant_sequence = get_cdna(reference_variant)
+            results = [align_to_reference_variant(target_sequence, reference_variant_sequence) for target_sequence in targets[0]]
+            #it's a tuple of (start in ref, length of match, matched sequence)
+            print(results)
+            #map the reference variant cds into the cdna
+            df = find_start_end_sites(config.cds_file, config.cdna_file, reference_variant)
+            print(df)
+            if df.empty:
+                print('No CDS found for variant')
+                regions = [None]*len(probes)
+            else:
+                cds_start = int(df["CDS_start"].values[0])
+                cds_end = int(df["CDS_end"].values[0])
+                for probe in results:
+                    print(probe[0], probe[0]+probe[1], cds_start, cds_end)
+                    regions.append(
+                        classify_region(probe[0], probe[0]+probe[1], cds_start, cds_end)
+                    )
         print(f"Found Regions: {regions}")
         binding_regions = config.binding_regions
         # Keep only probes whose classified regions intersect the allowed binding regions
@@ -524,3 +575,89 @@ def classify_region(target_start, target_end, cds_start, cds_end, include_5utr=T
         return ["3'UTR"]
     else:
         return None
+
+def align_to_reference_variant(target_sequence, reference_variant_seq):
+    # target_sequence = short probe
+    # reference_variant_seq = long cDNA
+    matcher = SequenceMatcher(None, reference_variant_seq, target_sequence)
+    match = matcher.find_longest_match(0, len(reference_variant_seq),
+                                       0, len(target_sequence))
+    #check that the match fully matches? TODO
+    return match.a, match.size, reference_variant_seq[match.a:match.a + match.size]
+
+def get_gene_symbol(header):
+    # Split by spaces
+    parts = header.split()
+
+    # Find the token that starts with "gene_symbol:"
+    gene_symbol_field = next((p for p in parts if p.startswith("gene:")), None)
+
+    # Extract the value after the colon
+    if gene_symbol_field:
+        gene_symbol = gene_symbol_field.split(":", 1)[1]
+    else:
+        gene_symbol = None
+
+    return gene_symbol
+
+
+def find_latest_variants_fasta(tempdir):
+    # Look for files like variants_round3.fasta in the given directory
+    pattern = os.path.join(tempdir, "*variants_round*.fasta")
+    round_files = glob.glob(pattern)
+
+    if round_files:
+        print("found some variant files")
+
+        # Extract round numbers using regex and pick the highest one
+        def round_num(fpath):
+            fname = os.path.basename(fpath)
+            m = re.search(r"variants_round(\d+)\.fasta$", fname)
+            return int(m.group(1)) if m else -1
+
+        latest = max(round_files, key=round_num)
+        print(f"picking latest: {latest}")
+
+        with open(latest, "r") as f:
+            lines = f.readlines()
+            headers = [line.strip() for line in lines if line.startswith(">")]
+            print(headers)
+            variants = [h.lstrip(">").split()[0] for h in headers]
+
+        return variants
+
+    # Fallback: look for variants.fasta
+    pattern = os.path.join(tempdir, "*variants.fasta")
+    plain_files = glob.glob(pattern)  
+    try:
+        plain_file = plain_files[0]
+    except IndexError:
+        print("No variant files found")
+        return None
+    if os.path.exists(plain_file):
+        with open(plain_file, "r") as f:
+            lines = f.readlines()
+            headers = [line.strip() for line in lines if line.startswith(">")]
+            print(headers)
+            variants = [h.lstrip(">").split()[0] for h in headers]
+        return variants
+
+def find_cds_entries(cds_headers_file, gene_symbol):
+    entries = []
+    with open(cds_headers_file, 'r') as f:
+        lines = f.readlines()
+        cds_headers = [line.strip() for line in lines]
+    for header in cds_headers:
+        if f"gene:{gene_symbol}" in header:
+            entries.append(header)
+    return entries
+
+def get_cdna(transcript_id):
+    """
+    Return the cDNA sequence (as a string) for a given transcript ID
+    from a multi-entry FASTA file.
+    """
+    for record in SeqIO.parse(config.cdna_file, "fasta"):
+        if record.id == transcript_id:
+            return str(record.seq)
+    raise ValueError(f"Transcript ID {transcript_id} not found in {config.cdna_file}")

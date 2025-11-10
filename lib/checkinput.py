@@ -6,6 +6,7 @@ from lib import readfastafile
 from lib import retrieveseq
 from lib import createoutput
 from pathlib import Path
+import config
 
 import pandas as pd
 
@@ -100,6 +101,15 @@ def armlength(armlen):
         success = True
     return success
 
+def totallength(totallen):
+    """Total length of the target sequence"""
+    success = False
+    if not totallen > 40:
+        print("Total length too short. Should be at least 40. Try again")
+    else:
+        success = True
+    return success
+
 
 def spacing(interval):
     """Minimum distance between two targets"""
@@ -148,9 +158,11 @@ def getdesigninput():
     success_f = False  # fasta file
     success_d = False  # output directory
     success_a = False  # arm length
+    success_l = False # total length
     success_i = False  # interval between targets
     success_t = False  # Tm threshold
     success_n = False  # fixed number of output sequences
+    success_type = False  # input type"
 
     while not success_d:
         outdir = input("Output directory: ")
@@ -273,6 +285,12 @@ def getdesigninput():
     while not success_a:
         armlen = input("Length of one padlock arm (nt): ")
         success_a = armlength(int(armlen))
+    
+    while not success_l:
+        totallen = input("Total length of the target sequence (nt): ")
+        if totallen is None:
+            totallen = 2*armlen
+        success_l = armlength(int(totallen))
 
     while not success_i:
         interval = input("The minimum number of nucleotides between targets: ")
@@ -304,17 +322,32 @@ def getdesigninput():
         # find genes in the database
         hits = retrieveseq.querygenes(genes, species)
 
-        # if any gene is not found in the RefSeq acronym list, write to file
+        # if any gene is not found in the RefSeq acronym list, try to translate
         nohit = [i for i in range(len(genes)) if len(hits[i]) == 0]
         if len(nohit):
-            with open(
-                os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
-            ) as f:
-                for i in nohit[::-1]:
-                    f.write("%s\n" % genes[i])
-                    del genes[i]  # remove genes that are not found
-                    del linkers[i]
-                    del hits[i]
+            # try to convert gene acronyms using Ensembl dictionary
+            translated_id = get_gene_synonyms(species, genes[0]) #pending me changing the csv generating code TODO
+            if translated_id is not None:
+                print(f"Converted {genes} to {translated_id}")
+                genes[0] = translated_id
+                hits = retrieveseq.querygenes([translated_id], species)
+                with open(
+                    os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
+                ) as f:
+                    f.write(
+                        "Some gene acronyms were converted using Ensembl synonym dictionary \n"
+                    )
+                    f.write("%s -> %s\n" % (genes[0], f"{translated_id}"))
+                    f.write("Please make sure these are the intended genes.\n\n")
+            else:
+                with open(
+                    os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
+                ) as f:
+                    for i in nohit[::-1]:
+                        f.write("%s\n" % genes[i])
+                        del genes[i]  # remove genes that are not found
+                        del linkers[i]
+                        del hits[i]
 
         # find sequences (MSA included if multiple variants)
         headers, basepos, sequences, msa, nocommon, variants = retrieveseq.findseq(
@@ -339,16 +372,20 @@ def getdesigninput():
         [geneorder.append(i) for i in idxmsa]
         linkers = [linkers[i] for i in geneorder]
         genes = [genes[i] for i in geneorder]
+        full_variants = variants.copy()
         variants = [variants[i] for i in geneorder]
 
         # replicates variants so that they match headers_wpos
         variants_matching_sequence = []
-        for c, i in enumerate(variants):
-            if isinstance(basepos[c][0], int):
-                variants_matching_sequence.append(i)
-            else:
-                for j in range(0, len(basepos[c])):
+        if config.reference_transcriptome == "ensembl":
+            variants_matching_sequence = [full_variants] #the reason being: we don't want to exclude the rest as targets
+        else:
+            for c, i in enumerate(variants):
+                if isinstance(basepos[c][0], int):
                     variants_matching_sequence.append(i)
+                else:
+                    for j in range(0, len(basepos[c])):
+                        variants_matching_sequence.append(i)
 
         # write found sequences to output file
         with open(os.path.join(outdir, "1.InputSeq_" + t + ".fasta"), "w") as f:
@@ -368,6 +405,14 @@ def getdesigninput():
         )
         headers_wpos = temp[1]
         sequences = temp[2]
+    while not success_type:
+        input_type = input(
+            "Is the input a gene list or a fasta file? (type 'csv' or 'fasta'): "
+        ).lower()
+        if input_type in ["csv", "fasta"]:
+            success_type = True
+        else:
+            print("Please type 'csv' or 'fasta'")
 
     # write an overview log file
     with open(
@@ -398,8 +443,8 @@ def getdesigninput():
                 "Number of sequences processed from the input file: %d\n" % len(headers)
             )
     return (
-        (species, int(armlen), int(interval), int(t1), int(t2), n),
-        (outdir, outdir_temp),
+        (species, int(armlen), int(interval), int(t1), int(t2), n, int(totallen)),
+        (outdir, outdir_temp, input_type),
         (genes, linkers, headers, variants),
         (basepos, headers_wpos, sequences, variants_matching_sequence),
     )
@@ -414,3 +459,45 @@ def checkformat(headers):
         else:
             c += 1
     return fmt
+
+def get_gene_synonyms(
+    species: str,
+    symbol: str,
+    ensembl_headers = Path('/nemo/lab/znamenskiyp/home/shared/resources/ensembl/mouse.allheaders.txt'),
+    ensembl_synonym_dict = Path('/nemo/lab/znamenskiyp/home/shared/resources/synonyms/synonyms_20251007_ GRCm39.txt')
+):
+    ensembl_id = None
+
+    ''' Given a species and a gene symbol (which may be an official symbol or a synonym),
+        look up the official gene symbol using Ensembl data files.
+        Returns the official gene symbol, or None if not found.
+    '''
+    
+# --- look up synonym in your dictionary --- 
+    with open(ensembl_synonym_dict) as f:
+        for line in f:
+            parts = line.strip().split("\t")
+            # guard against short lines
+            if len(parts) < 6:
+                continue
+            # check if the symbol matches exactly any of the synonym fields
+            if symbol in parts:
+                ensembl_id = parts[0]
+                break
+    
+    if ensembl_id is None:
+        print(f"Synonym {symbol} not found in synonym dict")
+        return None
+    
+    print(f"Ensembl ID for {symbol} in {species}: {ensembl_id}")
+    
+    # --- look up the official gene symbol in the headers ---
+    with open(ensembl_headers) as f:
+        for line in f:
+            if f"gene:{ensembl_id}" in line:
+                parts = line.strip().split(" ")
+                for part in parts:
+                    if part.startswith("gene_symbol:"):
+                        return part.split(":")[1]
+    
+    return None

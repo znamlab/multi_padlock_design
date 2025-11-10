@@ -118,14 +118,14 @@ def calculatetm(seq):
 
 def runscreen(argin):
     """Screen Tm and write sequences that fulfill Tm requirement to file, to use as blast input"""
-    dirname, header, seq, armlen, t1, t2 = argin
+    dirname, header, seq, armlen, t1, t2, totallen = argin
     fname = createoutput.blastinfilename(dirname, header)
 
     Tm = []
     siteChopped = []
 
     c = 0
-    listSeqChopped = chopseq(seq, armlen * 2, 1)
+    listSeqChopped = chopseq(seq, totallen, 1)
 
     # Filter sequences to remove long homopolymers
     noHomo_listSeq = []
@@ -136,7 +136,7 @@ def runscreen(argin):
             and "CCCCC" not in target
             and "TTTTT" not in target
         ):
-            noHomo_listSeq.append(target)
+            noHomo_listSeq.append(target) #noHomo
         # Otherwise insert None to keep the index consistent
         else:
             noHomo_listSeq.append(None) 
@@ -172,7 +172,7 @@ def thresholdtm(headers, sequences, dirname, designpars):
     inputs = []
     for c, i in enumerate(headers):
         inputs.append(
-            (dirname, i, sequences[c], designpars[1], designpars[3], designpars[4])
+            (dirname, i, sequences[c], designpars[1], designpars[3], designpars[4], designpars[6])
         )
     pool = multiprocessing.Pool(6)
 
