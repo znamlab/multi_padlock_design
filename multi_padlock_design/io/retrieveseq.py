@@ -10,8 +10,8 @@ import pandas as pd
 from Bio import SeqIO
 
 import multi_padlock_design.config as config
-from multi_padlock_design.io import checkinput
 from multi_padlock_design.io.formatrefseq import fastadb
+from multi_padlock_design.io.gene_utils import get_gene_synonyms
 from multi_padlock_design.msa import parmsa
 
 Acronyms = []
@@ -50,7 +50,8 @@ def loaddb(species):
                     )
                 else:
                     raise ValueError(
-                        "Invalid RefSeq config: expected fasta_pre_suffix_refseq=(prefix, suffix) and fasta_filenum_refseq=int"
+                        "Invalid RefSeq config: expected fasta_pre_suffix_refseq="
+                        "(prefix, suffix) and fasta_filenum_refseq=int"
                     )
 
         elif getattr(config, "reference_transcriptome", "").lower() == "ensembl":
@@ -92,7 +93,7 @@ def querygenes(genes, species):
     loaddb(species)
 
     def get_ensembl_id(header):
-        match = re.search(r'gene:([^ ]+)', header)
+        match = re.search(r"gene:([^ ]+)", header)
         if match:
             return match.group(1)
         return None
@@ -102,24 +103,37 @@ def querygenes(genes, species):
         print("filtering by GENCODE Basic annotation")
         for gene in genes:
             if gene not in Acronyms:
-                translated_id = checkinput.get_gene_synonyms(config.species, gene) #Correct gene name if possible
+                translated_id = get_gene_synonyms(
+                    config.species, gene
+                )  # Correct gene name if possible
                 if translated_id not in Acronyms:
                     hits.append([])
                     continue
                 else:
                     gene = translated_id
-            #get ensembl ID
-            ensembl_ID = [get_ensembl_id(header) for header in Headers if gene in header][0]
-            print(f'Querying for {ensembl_ID}')
-            #filter by Gencode basic annotation
-            allowed_variants = Gencode[Gencode['gene_id'] == ensembl_ID]['transcript_id'].tolist()
-            supporting_evidence = Gencode[Gencode['gene_id'] == ensembl_ID]['transcript_support_level'].tolist()
-            print(f'allowed variants: {allowed_variants}, supporting evidence: {supporting_evidence} (1 is best)')
-            #now form the list of all variants and provide a mask
-            hit = [c for c, header in enumerate(Headers) if ensembl_ID in header] #variant search now happens via ensembl ID
-            #filter hits by allowed variants
+            # get ensembl ID
+            ensembl_ID = [
+                get_ensembl_id(header) for header in Headers if gene in header
+            ][0]
+            print(f"Querying for {ensembl_ID}")
+            # filter by Gencode basic annotation
+            allowed_variants = Gencode[Gencode["gene_id"] == ensembl_ID][
+                "transcript_id"
+            ].tolist()
+            supporting_evidence = Gencode[Gencode["gene_id"] == ensembl_ID][
+                "transcript_support_level"
+            ].tolist()
+            print(
+                f"allowed variants: {allowed_variants},"
+                f" supporting evidence: {supporting_evidence} (1 is best)"
+            )
+            # now form the list of all variants and provide a mask
+            hit = [
+                c for c, header in enumerate(Headers) if ensembl_ID in header
+            ]  # variant search now happens via ensembl ID
+            # filter hits by allowed variants
             hit_masked = [(Headers[h].split()[0][1:] in allowed_variants) for h in hit]
-            #filter hits by allowed
+            # filter hits by allowed
             hits.append(hit)
 
         return (hits, hit_masked)
@@ -130,7 +144,7 @@ def querygenes(genes, species):
                 hits.append([])
             else:
                 hit = [c for c, header in enumerate(Acronyms) if header == gene]
-                hits.append(hit) 
+                hits.append(hit)
 
     return hits
 
@@ -159,12 +173,17 @@ def findseq(genes, hits, dirname):
             headers.append(Headers[hit[0]])
             basepos.append([0, len(Seq[hit[0]]) - 1])
             variants.append(Headers[hit[0]][1:].split(".", 1)[0])
-            file = dirname + "/" + genes[c] + "_variants.fasta" #makes it easier to map properly the target if all sets of variants are written down
+            file = (
+                dirname + "/" + genes[c] + "_variants.fasta"
+            )  # makes it easier to map properly the target
+            # if all sets of variants are written down
             with open(file, "w") as f:
                 f.write("%s\n" % headers[0])
                 f.write("%s\n\n" % targets[0])
-            full_variants = variants #no filtering happened, since there's only one variant
-        else: #more than ona variant
+            full_variants = (
+                variants  # no filtering happened, since there's only one variant
+            )
+        else:  # more than ona variant
             msa.append(genes[c])
             tempheader = []
             file = dirname + "/" + genes[c] + "_variants.fasta"
@@ -174,13 +193,15 @@ def findseq(genes, hits, dirname):
                     f.write("%s\n" % Headers[multi])
                     f.write("%s\n\n" % Seq[multi])
                     full_variants.append(Headers[multi][1:].split(".", 1)[0])
-            if config.reference_transcriptome == "ensembl": # only keep variants that pass the GENCODE mask
+            if (
+                config.reference_transcriptome == "ensembl"
+            ):  # only keep variants that pass the GENCODE mask
                 hit = [h for i, h in enumerate(hit) if hitmask[i]]
-                if len(hit) == 1: 
-                    msa=[] #we CLUSTAL as a function of the filtered variants
+                if len(hit) == 1:
+                    msa = []  # we CLUSTAL as a function of the filtered variants
                     targets.append(Seq[hit[0]])
                     headers.append(Headers[hit[0]])
-                    basepos.append([0, len(Seq[hit[0]]) - 1])               
+                    basepos.append([0, len(Seq[hit[0]]) - 1])
                 file = dirname + "/" + genes[c] + "_allowed_variants.fasta"
                 with open(file, "w") as f:
                     for multi in hit:
@@ -189,7 +210,7 @@ def findseq(genes, hits, dirname):
                         tempheader.append(Headers[multi])
                 headersMSA.append(tempheader)
                 variants.append([i[1:].split(".", 1)[0] for i in tempheader])
-            else: #Clustal on all variants, no filter
+            else:  # Clustal on all variants, no filter
                 for multi in hit:
                     tempheader.append(Headers[multi])
                 headersMSA.append(tempheader)
@@ -206,23 +227,44 @@ def findseq(genes, hits, dirname):
 
             def fasta_for_round(r: int) -> str:
                 if config.reference_transcriptome == "ensembl":
-                    return f"{dirname}/{gene}_allowed_variants.fasta" if r == 1 else f"{dirname}/{gene}_allowed_variants_round{r}.fasta"
-                return f"{dirname}/{gene}_variants.fasta" if r == 1 else f"{dirname}/{gene}_variants_round{r}.fasta"
+                    return (
+                        f"{dirname}/{gene}_allowed_variants.fasta"
+                        if r == 1
+                        else f"{dirname}/{gene}_allowed_variants_round{r}.fasta"
+                    )
+                return (
+                    f"{dirname}/{gene}_variants.fasta"
+                    if r == 1
+                    else f"{dirname}/{gene}_variants_round{r}.fasta"
+                )
 
             def dnd_for_round(r: int) -> str:
                 if config.reference_transcriptome == "ensembl":
-                    return f"{dirname}/{gene}_allowed_variants.dnd" if r == 1 else f"{dirname}/{gene}_allowed_variants_round{r}.dnd"
-                return f"{dirname}/{gene}_variants.dnd" if r == 1 else f"{dirname}/{gene}_variants_round{r}.dnd"
-            
+                    return (
+                        f"{dirname}/{gene}_allowed_variants.dnd"
+                        if r == 1
+                        else f"{dirname}/{gene}_allowed_variants_round{r}.dnd"
+                    )
+                return (
+                    f"{dirname}/{gene}_variants.dnd"
+                    if r == 1
+                    else f"{dirname}/{gene}_variants_round{r}.dnd"
+                )
+
             # how many variants do we currently have?
             n_left = sum(1 for _ in SeqIO.parse(fasta_for_round(round_no), "fasta"))
 
             while True:
-                # run MSA for this gene only (pass [gene] so continuemsa handles one job)
-                out = parmsa.continuemsa(dirname, [gene],
-                                        round=None if round_no == 1 else round_no,
-                                        reset=True)
-                # out = (Names, BasePos, Seqs); each is length 1 because we passed [gene]
+                # run MSA for this gene only
+                # (pass [gene] so continuemsa handles one job)
+                out = parmsa.continuemsa(
+                    dirname,
+                    [gene],
+                    round=None if round_no == 1 else round_no,
+                    reset=True,
+                )
+                # out = (Names, BasePos, Seqs)
+                # each is length 1 because we passed [gene]
                 name_c, basepos_c, seqs_c = out[0][0], out[1][0], out[2][0]
 
                 if len(basepos_c):  # consensus found
@@ -243,7 +285,9 @@ def findseq(genes, hits, dirname):
                     break
 
                 # drop one outgroup and try again
-                print(f"[{gene}] No consensus, removing outgroup (round {round_no} → {round_no+1})")
+                print(
+                    f"[{gene}] No consensus, removing outgroup (round {round_no} → {round_no+1})"
+                )
                 treefile = dnd_for_round(round_no)
                 outgroup = parmsa.find_outgroup(treefile)
 
@@ -253,14 +297,15 @@ def findseq(genes, hits, dirname):
 
                 # update remaining variants
                 n_left = sum(1 for _ in SeqIO.parse(fasta_for_round(round_no), "fasta"))
-        
+
     if config.reference_transcriptome == "ensembl":
-        #update variants to blast against all variants later
+        # update variants to blast against all variants later
         variants = full_variants
 
     print("MSA finished across genes.")
 
     return headers, basepos, targets, msa, nocommon, variants
+
 
 def load_gencode():
     def extract_features(line, feature):
@@ -273,18 +318,26 @@ def load_gencode():
     transcript_ids = []
     transcript_support_levels = []
 
-    with open(config.gencode_file, 'r') as f:
+    with open(config.gencode_file, "r") as f:
         for line in f:
-            if line.startswith("#") or line.split('\t')[2] != 'transcript':
+            if line.startswith("#") or line.split("\t")[2] != "transcript":
                 continue  # skip header lines and gene lines
             line = line.strip()
-            gene_id = extract_features(line, 'gene_id')
-            transcript_id = extract_features(line, 'transcript_id')
-            transcript_support_level = extract_features(line, 'transcript_support_level')
+            gene_id = extract_features(line, "gene_id")
+            transcript_id = extract_features(line, "transcript_id")
+            transcript_support_level = extract_features(
+                line, "transcript_support_level"
+            )
             if gene_id or transcript_id:
                 gene_ids.append(gene_id)
                 transcript_ids.append(transcript_id)
                 transcript_support_levels.append(transcript_support_level)
 
-    gencode = pd.DataFrame({'gene_id': gene_ids, 'transcript_id': transcript_ids, 'transcript_support_level': transcript_support_levels})
+    gencode = pd.DataFrame(
+        {
+            "gene_id": gene_ids,
+            "transcript_id": transcript_ids,
+            "transcript_support_level": transcript_support_levels,
+        }
+    )
     return gencode

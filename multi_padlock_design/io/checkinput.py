@@ -8,6 +8,7 @@ import pandas as pd
 
 import multi_padlock_design.config as config
 from multi_padlock_design.io import createoutput, readfastafile, retrieveseq
+from multi_padlock_design.io.gene_utils import get_gene_synonyms
 
 Acronyms = []
 Seq = []
@@ -100,6 +101,7 @@ def armlength(armlen):
         success = True
     return success
 
+
 def totallength(totallen):
     """Total length of the target sequence"""
     success = False
@@ -157,7 +159,7 @@ def getdesigninput():
     success_f = False  # fasta file
     success_d = False  # output directory
     success_a = False  # arm length
-    success_l = False # total length
+    success_l = False  # total length
     success_i = False  # interval between targets
     success_t = False  # Tm threshold
     success_n = False  # fixed number of output sequences
@@ -284,11 +286,11 @@ def getdesigninput():
     while not success_a:
         armlen = input("Length of one padlock arm (nt): ")
         success_a = armlength(int(armlen))
-    
+
     while not success_l:
         totallen = input("Total length of the target sequence (nt): ")
         if totallen is None:
-            totallen = 2*armlen
+            totallen = 2 * armlen
         success_l = armlength(int(totallen))
 
     while not success_i:
@@ -325,7 +327,9 @@ def getdesigninput():
         nohit = [i for i in range(len(genes)) if len(hits[i]) == 0]
         if len(nohit):
             # try to convert gene acronyms using Ensembl dictionary
-            translated_id = get_gene_synonyms(species, genes[0]) #pending me changing the csv generating code TODO
+            translated_id = get_gene_synonyms(
+                species, genes[0]
+            )  # pending me changing the csv generating code TODO
             if translated_id is not None:
                 print(f"Converted {genes} to {translated_id}")
                 genes[0] = translated_id
@@ -377,7 +381,9 @@ def getdesigninput():
         # replicates variants so that they match headers_wpos
         variants_matching_sequence = []
         if config.reference_transcriptome == "ensembl":
-            variants_matching_sequence = [full_variants] #the reason being: we don't want to exclude the rest as targets
+            variants_matching_sequence = [
+                full_variants
+            ]  # the reason being: we don't want to exclude the rest as targets
         else:
             for c, i in enumerate(variants):
                 if isinstance(basepos[c][0], int):
@@ -458,45 +464,3 @@ def checkformat(headers):
         else:
             c += 1
     return fmt
-
-def get_gene_synonyms(
-    species: str,
-    symbol: str,
-    ensembl_headers = Path('/nemo/lab/znamenskiyp/home/shared/resources/ensembl/mouse.allheaders.txt'),
-    ensembl_synonym_dict = Path('/nemo/lab/znamenskiyp/home/shared/resources/synonyms/synonyms_20251007_ GRCm39.txt')
-):
-    ensembl_id = None
-
-    ''' Given a species and a gene symbol (which may be an official symbol or a synonym),
-        look up the official gene symbol using Ensembl data files.
-        Returns the official gene symbol, or None if not found.
-    '''
-    
-# --- look up synonym in your dictionary --- 
-    with open(ensembl_synonym_dict) as f:
-        for line in f:
-            parts = line.strip().split("\t")
-            # guard against short lines
-            if len(parts) < 6:
-                continue
-            # check if the symbol matches exactly any of the synonym fields
-            if symbol in parts:
-                ensembl_id = parts[0]
-                break
-    
-    if ensembl_id is None:
-        print(f"Synonym {symbol} not found in synonym dict")
-        return None
-    
-    print(f"Ensembl ID for {symbol} in {species}: {ensembl_id}")
-    
-    # --- look up the official gene symbol in the headers ---
-    with open(ensembl_headers) as f:
-        for line in f:
-            if f"gene:{ensembl_id}" in line:
-                parts = line.strip().split(" ")
-                for part in parts:
-                    if part.startswith("gene_symbol:"):
-                        return part.split(":")[1]
-    
-    return None
