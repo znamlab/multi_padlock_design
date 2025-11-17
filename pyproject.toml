@@ -13,13 +13,7 @@ dependencies = [
     "znamutils @ git+ssh://git@github.com/znamlab/znamutils.git",
 ]
 
-# Install the standalone root-level config.py as a top-level module so
-# `import config` works after installation without manual PYTHONPATH edits.
-
 license = {text = "MIT"}
-
-[tool.setuptools]
-py-modules = ["config"]
 
 [build-system]
 requires = [
@@ -30,7 +24,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["multi_padlock_design", "lib"]
+include = ["multi_padlock_design"]
 exclude = ["tests", "docs*"]
 
 [project.optional-dependencies]
@@ -59,8 +53,10 @@ line-length = 88
 [tool.ruff]
 line-length = 88
 exclude = ["__init__.py","build",".eggs"]
-select = ["I", "E", "F"]
 fix = true
+
+[tool.ruff.lint]
+select = ["I", "E", "F"]
 
 [tool.tox]
 legacy_tox_ini = """
