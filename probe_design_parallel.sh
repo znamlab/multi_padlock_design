@@ -10,41 +10,81 @@
 
 set -euo pipefail
 
-# Usage: probe_design_parallel.sh <input_dir> <fasta|csv>
-if [[ $# -lt 2 ]]; then
-  echo "Usage: $0 <input_dir> <fasta|csv>"
+# Usage: probe_design_parallel.sh <input_file.(fa|fasta|csv)>
+if [[ $# -lt 1 ]]; then
+  echo "Usage: $0 <input_file.(fa|fasta|csv)>"
   exit 1
 fi
 
-# Canonicalize input_dir to an absolute path (portable fallback if realpath is missing)
-if command -v realpath >/dev/null 2>&1; then
-  input_dir="$(realpath -m "$1")"
+# Determine repository root (prefer git, fallback to this script's directory)
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+if repo_root=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null); then
+  :
 else
-  # -P resolves symlinks; cd handles relative paths
-  input_dir="$(cd "$1" && pwd -P)"
-fi
-input_type="$(echo "$2" | tr '[:upper:]' '[:lower:]')"
-
-if [[ ! -d "$input_dir" ]]; then
-  echo "Error: input_dir '$input_dir' does not exist"
-  exit 1
-fi
-if [[ "$input_type" != "fasta" && "$input_type" != "csv" ]]; then
-  echo "Error: input_type must be 'fasta' or 'csv'"
-  exit 1
+  repo_root="$SCRIPT_DIR"
 fi
 
-parent_base="$(basename "$input_dir")"
-logdir="/nemo/lab/znamenskiyp/home/users/becalia/logs/slurm_logs/${parent_base}"
+# Ensure we run from repo root so Python can import local config
+cd "$repo_root"
+
+# Canonicalize input file to absolute path
+if command -v realpath >/dev/null 2>&1; then
+  input_file="$(realpath -m "$1")"
+else
+  input_file="$(cd "$(dirname "$1")" && pwd -P)/$(basename "$1")"
+fi
+
+if [[ ! -f "$input_file" ]]; then
+  echo "Error: input_file '$input_file' does not exist"
+  exit 1
+fi
+
+ext_lower=$(echo "${input_file##*.}" | tr '[:upper:]' '[:lower:]')
+case "$ext_lower" in
+  fa|fasta)
+    input_type="fasta"
+    ;;
+  csv)
+    input_type="csv"
+    ;;
+  *)
+    echo "Error: input file extension must be .fa, .fasta, or .csv"
+    exit 1
+    ;;
+esac
+
+# Split input into per-item files in scratch
+if [[ "$input_type" == "fasta" ]]; then
+  python "${repo_root}/other_scripts/fasta_splitter.py" "$input_file"
+else
+  python "${repo_root}/other_scripts/csv_splitter.py" "$input_file"
+fi
+
+# Compute output directory based on Python config.split_input and input stem
+out_dir="$(python - "$input_file" <<'PY'
+from pathlib import Path
+import sys
+import config
+inp = Path(sys.argv[1])
+print((config.split_input / inp.stem).resolve())
+PY
+)"
+
+parent_base="$(basename "$out_dir")"
+logdir="${repo_root}/logs/slurm_logs/${parent_base}"
 mkdir -p "$logdir"
 
-# Find files directly in input_dir (no copying)
+# Iterate over produced files in scratch directory and submit jobs
 shopt -s nullglob nocaseglob
-files=( "${input_dir}"/*.${input_type} )
+if [[ "$input_type" == "fasta" ]]; then
+  files=( "${out_dir}"/*.fasta )
+else
+  files=( "${out_dir}"/*.csv )
+fi
 shopt -u nocaseglob
 
 if (( ${#files[@]} == 0 )); then
-  echo "No .${input_type} files found in ${input_dir}"
+  echo "No split files found in ${out_dir}"
   exit 0
 fi
 
@@ -53,6 +93,6 @@ for src in "${files[@]}"; do
   echo "Starting job ${src}"
   sbatch \
     --export=INPUT="$src",PARENT="$parent_base",INPUT_TYPE="$input_type" \
-    --output="${logdir}/${parent_base}_${base_noext}.out" \
-    /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/probe_design.sh
+  --output="${logdir}/${parent_base}_${base_noext}.out" \
+  "${repo_root}/probe_design.sh"
 done

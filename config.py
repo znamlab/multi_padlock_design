@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 BASE_DIR = os.path.abspath('/nemo/lab/znamenskiyp/home/shared/resources/')
 
@@ -30,3 +31,8 @@ annotation_file = os.path.join(
 )
 binding_regions = ["CDS", "3'UTR"]
 specificity_by_tm = True
+
+# Default root directory for split input files produced by helper scripts
+# e.g., an input file "Olfrs.fa" will be split into:
+#   /nemo/lab/znamenskiyp/scratch/Olfrs/<gene>.fasta
+split_input = Path("/nemo/lab/znamenskiyp/scratch")
