@@ -1,11 +1,3 @@
-import csv
-import os
-import sys
-from pathlib import Path
-from typing import Iterable
-
-from multi_padlock_design.config import split_input
-
 """Split a CSV file where the first column value becomes the filename.
 
 Usage:
@@ -13,6 +5,14 @@ Usage:
 Writes each row to <OUTPUT_DIR>/<first_col>.csv (single-row CSV).
 If --out not provided, output directory is split_input/<input_stem>.
 """
+
+import csv
+import os
+import sys
+from pathlib import Path
+from typing import Iterable
+
+from multi_padlock_design.config import split_input
 
 
 def write_row(out_dir: Path, row: Iterable[str]):

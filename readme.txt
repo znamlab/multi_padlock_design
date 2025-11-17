@@ -22,7 +22,7 @@ The software allows the following input files:
 Other parameters:
 Species: the database against which the sequence specificity should be checked. This will also be the database to look for gene acronyms if input fasta sequences are not provided.
 Padlock arm length: the length of each target arm of a padlock probe. The final target sequence will be twice this length.
-Tm: lower and upper limit of melting temperatures, in a reaction containig 0.1 uM probe, 0.075 M monovalent salt, 0.01 M bivalent salt and 20% formamide.
+Tm: lower and upper limit of melting temperatures, in a reaction containing 0.1 uM probe, 0.075 M monovalent salt, 0.01 M bivalent salt and 20% formamide.
 
 Fixed parameters:
 For specificity check, in order to say a target sequence is specific enough, it cannot have any sequence in the database with more than 50% of sequence coverage, covering ligation site +- 5 nucleotides, and 80% of homology.

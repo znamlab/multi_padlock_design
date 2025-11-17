@@ -35,7 +35,7 @@ def blastinfilename(dirname, filename):
         filename = os.path.join(
             dirname, filenamefrag[3] + filenamefrag[4] + "_target"
         )  # access number and name
-    except:
+    except Exception:
         filename = filename.replace("|", "")
         filename = os.path.join(
             dirname, filename[:30] + "_target"
@@ -70,7 +70,7 @@ def writetargetfile(designinput, sites, Tm, armlength, dirnames, fname, totallen
                             "%s,%f,%d\n"
                             % (sequences[i][k : k + totallen], Tm[i][k], k + 1)
                         )
-            except:
+            except Exception:
                 pass
             f.write("\n")
 

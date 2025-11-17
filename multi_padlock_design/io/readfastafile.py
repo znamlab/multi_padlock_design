@@ -37,7 +37,8 @@ def readfasta(fastafile):
                 )
                 headers.append(sequence[headerlines[i]])
 
-            # the last entry (the only one in the case of one sequence in the whole file)
+            # the last entry
+            # (the only one in the case of one sequence in the whole file)
             sequences.append("".join(sequence[headerlines[-1] + 1 : len(sequence) - 1]))
             headers.append(sequence[headerlines[-1]])
             success = True

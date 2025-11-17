@@ -94,10 +94,10 @@ def make_constrained_library(repeat):
 
 
 def greedy_once(candidates, d):
+    """Greedy selection that enforces pairwise Hamming distance >= d."""
     chosen = []
-    X = _GLOBAL_ENCODED
-    for i in idxs:
-        cand = X[i]
+    encoded = encode_list(candidates)
+    for cand in encoded:
         if all(hamming_distance(cand, c) >= d for c in chosen):
             chosen.append(cand)
     return chosen
@@ -111,8 +111,6 @@ def multi_restart_greedy(
     if candidates is None:
         print("no candidates were supplied, building complete library")
         candidates = [encode_str("".join(p)) for p in product(alphabet, repeat=n)]
-    else:
-        encoded = encode_list(candidates)
 
     best = []
     rng = random.Random(seed)
@@ -190,8 +188,9 @@ def parallel_greedy(
     best_len, best_choice = max(results, key=lambda x: x[0])
     distribution = lengths
 
+    mean_len = sum(lengths) / len(lengths)
     print(
-        f"Finished in {time.time()-t0:.2f}s. Best={best_len}, mean={sum(lengths)/len(lengths):.1f}"
+        "Finished in %.2fs. Best=%s, mean=%.1f" % (time.time() - t0, best_len, mean_len)
     )
 
     # decode only the winning set
@@ -213,7 +212,6 @@ def local_improvement_fast(chosen, candidates, d, max_passes=3):
     for _ in range(max_passes):
         print(f"Pass {_}, at {time.time()-start} s/pass")
         improved = False
-        new_chosen = []
         for x_str, x_enc in zip(candidates, cand_enc):
             if x_str in chosen_set:
                 continue
@@ -407,7 +405,7 @@ def local_improve_simple_fast(
 
 # ------------------- Worker + Orchestration -------------------
 def worker_run(args_tuple):
-    """One independent hill-climb with its own seed; returns (score, all, subset, seed)."""
+    """Run one hill-climb; return (score, all, subset, seed)."""
     (seed, all_code_init, d_global, d_prefix, alpha, iters, subset_restarts) = (
         args_tuple
     )
@@ -501,9 +499,10 @@ def main():
                 if not row:
                     continue
                 if isinstance(col, str):
-                    # if header row exists, you should adapt to DictReader; for now assume index
+                    # Expect caller to use DictReader when addressing columns by name
                     raise ValueError(
-                        "--col as name needs DictReader; either provide index or use a TSV with known index."
+                        "--col as name needs DictReader; either provide an index "
+                        "or use a TSV with a known index."
                     )
                 idx = int(col) if col is not None else 1  # default to second column
                 seq = row[idx].strip()
@@ -580,7 +579,8 @@ def main():
         f.write(f"Subset |subset|: {len(best_subset)}\n")
         f.write(f"Score (alpha*|subset| + |all|): {best_score}\n")
         f.write(
-            f"d_global: {args.d_global}, d_prefix: {args.d_prefix}, alpha: {args.alpha}\n"
+            f"d_global: {args.d_global}, d_prefix: {args.d_prefix},"
+            f" alpha: {args.alpha}\n"
         )
         f.write(
             f"iters per worker: {args.iters}, subset_restarts: {args.subset_restarts}\n"

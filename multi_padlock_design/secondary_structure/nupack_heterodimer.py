@@ -39,6 +39,7 @@ Dependencies: nupack, pandas, numpy, tqdm (optional for progress bars).
 
 from __future__ import annotations
 
+import importlib
 import math
 import os  # added for sequence/name caching
 import pickle
@@ -48,15 +49,20 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
+from multi_padlock_design.secondary_structure.check_padlocks import clean_seq, slurm_it
+
 try:  # NUPACK imports
-    from nupack import Model, SetSpec, Strand, Tube, tube_analysis
+    _nupack = importlib.import_module("nupack")
 except ImportError as e:
     raise ImportError(
         "NUPACK is required for nupack_heterodimer module. Install nupack first."
     ) from e
 
-
-from multi_padlock_design.secondary_structure.check_padlocks import clean_seq, slurm_it
+Model = _nupack.Model
+SetSpec = _nupack.SetSpec
+Strand = _nupack.Strand
+Tube = _nupack.Tube
+tube_analysis = _nupack.tube_analysis
 
 # ------------------------------- Pair Enumeration -------------------------------
 
@@ -530,7 +536,7 @@ def submit_exhaustive_heterodimer_jobs(
     return batch_job_ids, aggregate_job_id
 
 
-# -------------------------------- Selected-vs-All (Per-Probe) ---------------------------------
+# -------------------------------- Selected-vs-All (Per-Probe) -------------------------
 
 
 @slurm_it(
@@ -551,7 +557,8 @@ def run_nupack_selected_vs_all_for_probe(
     """Compute NUPACK heterodimer metrics for one selected probe vs all probes.
 
     Writes a part file with rows for j in [0..N-1] and columns:
-      i, j, probe_i, probe_j, heterodimer_dG, heterodimer_M, heterodimer_fraction, heterodimer_percent
+      i, j, probe_i, probe_j, heterodimer_dG, heterodimer_M,
+      heterodimer_fraction, heterodimer_percent
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -889,7 +896,8 @@ def submit_selected_vs_all_jobs(
     use_seq_cache: bool = True,
     seq_cache_name: str = "probe_sequences_cache.pkl",
 ) -> tuple[list[str], Optional[str]]:
-    """Submit one job per selected probe (selected-vs-all) plus dependent aggregator job.
+    """Submit one job per selected probe (selected-vs-all)
+    plus dependent aggregator job.
 
     Returns the list of batch job IDs and the aggregator job ID.
     """

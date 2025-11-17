@@ -1,4 +1,5 @@
-# padlock design pipeline for multiplexed assay with multiple probes per target in cDNA-based expression profiling
+# padlock design pipeline for multiplexed assay with multiple probes
+# per target in cDNA-based expression profiling
 # Xiaoyan, 2017
 import sys
 
@@ -18,7 +19,8 @@ if __name__ == "__main__":
     try:
         # get keyboard inputs and prepare sequences
 
-        # design_pars : (species, int(armlen), int(interval), int(t1), int(t2), number of probes per gene, total length)
+        # design_pars : (species, int(armlen), int(interval), int(t1), int(t2),
+        # number of probes per gene, total length)
         # outpars : (outdir, outdir_temp, input_type)
         # genepars : (genes, linkers, headers, variants)
         # designinput : (basepos, headers_wpos, sequences, variants_matching_sequence)
@@ -103,7 +105,8 @@ if __name__ == "__main__":
             "5.ProbesDBMappable_",
         )
 
-        # prioritize sequences without homopolymers and randomly select the fixed number of probes per gene (if applicable)
+        # prioritize sequences without homopolymers and randomly select the fixed number
+        #  of probes per gene (if applicable)
         if len(designpars[5]):
             sublist = finalizeprobes.selectprobes(
                 int(designpars[5]), finallist, genepars[2], designpars[1], outpars
@@ -123,7 +126,7 @@ if __name__ == "__main__":
 
         print("All finished!")
 
-    except:
+    except Exception:
         print(sys.exc_info()[0])
         import traceback
 

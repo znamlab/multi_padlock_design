@@ -13,14 +13,16 @@ def revcomp(seq):
 
 def read_candidates(outdir, panel_name, probefile="3.AllSpecificTargets_*.csv"):
     """
-    Read and concatenate all "3.AllSpecificTargets_*.csv" files from subdirectories of the given panel directory.
+    Read and concatenate all "3.AllSpecificTargets_*.csv" files from subdirectories of
+    the given panel directory.
 
     Args:
         outdir (Path): Base output directory containing the panel subdirectory.
         panel_name (str): Name of the panel subdirectory.
 
     Returns:
-        pd.DataFrame: Concatenated dataframe with columns ['target', 'Tm', 'startpos', 'gene'].
+        pd.DataFrame: Concatenated dataframe with columns
+        ['target', 'Tm', 'startpos', 'gene'].
     """
     all_dfs = []
     panel_dir = outdir / panel_name
@@ -34,7 +36,8 @@ def read_candidates(outdir, panel_name, probefile="3.AllSpecificTargets_*.csv"):
             target_files = list(subdir.glob(probefile))
             assert (
                 len(target_files) == 1
-            ), f"Expected exactly one target file in {subdir}, found {len(target_files)}"
+            ), f"Expected exactly one target file in {subdir},"
+            f" found {len(target_files)}"
             tf = target_files[0]
 
             # Load and tag with gene name (= subdir name)
@@ -78,11 +81,17 @@ def generate_random_dna_sequences(
         sequence = "".join(random.choice(bases) for _ in range(length))
 
         # Check condition for overlap oligos
-        if (
-            for_overlap
-            and sequence[3:6]
-            in ["TAA", "TCA", "TGA", "TTA", "ATT", "AGT", "ACT", "AAT"]
-        ):  # ligation wont happen when reverse complement is TXA In 6:9 position for overlap
+        if for_overlap and sequence[3:6] in [
+            "TAA",
+            "TCA",
+            "TGA",
+            "TTA",
+            "ATT",
+            "AGT",
+            "ACT",
+            "AAT",
+        ]:  # ligation won't happen when reverse complement
+            # is TXA In 6:9 position for overlap
             continue
 
         # No homopolymers

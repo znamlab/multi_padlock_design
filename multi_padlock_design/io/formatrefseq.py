@@ -195,7 +195,8 @@ def blastdb(species: str = "mouse", dbtype: str = "nucl"):
     fasta_path = config.blast_db_file
     if not os.path.isfile(fasta_path):
         print(f"FASTA file not found: {fasta_path}, attempting to create one.")
-        # Build the selected FASTA directly, avoiding retrieveseq.loaddb to break the cycle
+        # Build the selected FASTA directly, avoiding
+        # retrieveseq.loaddb to break the cycle
         fastadir = os.path.join(config.BASE_DIR, config.reference_transcriptome)
         try:
             if getattr(config, "reference_transcriptome", "").lower() == "refseq":
@@ -217,7 +218,8 @@ def blastdb(species: str = "mouse", dbtype: str = "nucl"):
                     )
                 else:
                     raise ValueError(
-                        "Invalid RefSeq config: expected fasta_pre_suffix_refseq=(prefix, suffix) and fasta_filenum_refseq=int"
+                        "Invalid RefSeq config: expected fasta_pre_suffix_refseq"
+                        "=(prefix, suffix) and fasta_filenum_refseq=int"
                     )
             elif getattr(config, "reference_transcriptome", "").lower() == "ensembl":
                 files = [config.cdna_file]

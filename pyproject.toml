@@ -57,6 +57,7 @@ fix = true
 
 [tool.ruff.lint]
 select = ["I", "E", "F"]
+extend-per-file-ignores = {"notebooks/*.ipynb" = ["E501", "E712"]}
 
 [tool.tox]
 legacy_tox_ini = """

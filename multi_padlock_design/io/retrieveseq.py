@@ -30,7 +30,8 @@ def loaddb(species):
     try:
         fastadir = os.path.join(config.BASE_DIR, config.reference_transcriptome)
         if getattr(config, "reference_transcriptome", "").lower() == "refseq":
-            # Expect config.fasta_pre_suffix_refseq = (prefix, suffix), config.fasta_filenum_refseq = int
+            # Expect config.fasta_pre_suffix_refseq = (prefix, suffix),
+            # config.fasta_filenum_refseq = int
             pre_suf = getattr(config, "fasta_pre_suffix_refseq", None)
             filenum = getattr(config, "fasta_filenum_refseq", None)
             acr_path = os.path.join(fastadir, species + ".acronymheaders.txt")
@@ -286,7 +287,8 @@ def findseq(genes, hits, dirname):
 
                 # drop one outgroup and try again
                 print(
-                    f"[{gene}] No consensus, removing outgroup (round {round_no} → {round_no+1})"
+                    f"[{gene}] No consensus, removing outgroup"
+                    f" (round {round_no} -> {round_no+1})"
                 )
                 treefile = dnd_for_round(round_no)
                 outgroup = parmsa.find_outgroup(treefile)

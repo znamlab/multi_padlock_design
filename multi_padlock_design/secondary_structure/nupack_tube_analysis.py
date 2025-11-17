@@ -231,7 +231,7 @@ def _analyze_isolated_worker(args: Tuple[Any, ...]) -> Dict[str, Any]:
     # Import locally inside worker to be robust in subprocess context
     from nupack import Model, SetSpec, Strand, Tube, tube_analysis
 
-    from ...lib import check_padlocks as _cp
+    from multi_padlock_design.secondary_structure import check_padlocks as _cp
 
     model = Model(**model_kwargs)
     padlock_seq = str(row["padlock"]).strip().upper()

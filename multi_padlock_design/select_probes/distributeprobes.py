@@ -8,7 +8,6 @@ import numpy as np
 def asmanyprobes(siteCandidates, originalmap, sequences, designpars):
     Probes = []
     ProbesPos = []
-    armlength = designpars[1]
     interval = designpars[2]
     totallen = designpars[6]
     for i, sites in enumerate(siteCandidates):

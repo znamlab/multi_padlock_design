@@ -78,16 +78,18 @@ def makeoutputdir(outdir):
         if "Errno 17" in str(e):
             print("Directory already existing.")
             success = True
-    except WindowsError as e:
-        if "Error 183" in str(e):  # already existing
+    except OSError as e:
+        # WindowsError is not available on all Python builds / platforms.
+        # OSError covers platform-specific OS errors including WindowsError.
+        if "Error 183" in str(e):  # already existing (Windows)
             print("Directory already existing.")
             success = True
-        elif "Error 3" in str(e):  # directory does not exist
+        elif "Error 3" in str(e):  # directory does not exist (Windows)
             try:
                 Path(outdir).mkdir(parents=True, exist_ok=True)
                 # os.makedirs(outdir)  # create subdirectories
                 success = True
-            except:  # catch all exceptions
+            except Exception:
                 print("Could not create output directory. Try again.")
     return success
 
@@ -147,10 +149,15 @@ def getdesigninput():
 
     Returns:
         tuple: (
-            design_input (str, int, int, int, int, str): species, arm length, interval, Tm thresholds, number of probes per gene,
-            output parameters (str, str): output directory, temporary output directory,
-            gene parameters (list, list, list, list): gene acronyms, linkers, headers, variants,
-            design input (list, list, list, list): base positions, headers with positions, sequences, variants matching sequences
+            design_input (str, int, int, int, int, str):
+                species, arm length, interval, Tm thresholds, number of probes per gene,
+            output parameters (str, str):
+                output directory, temporary output directory,
+            gene parameters (list, list, list, list):
+                gene acronyms, linkers, headers, variants,
+            design input (list, list, list, list):
+                base positions, headers with positions, sequences,
+                variants matching sequences
         )
 
     """
@@ -187,7 +194,8 @@ def getdesigninput():
     # when human or mouse, possible to load only gene list
     while not success_g:
         genefile = input(
-            "File containing gene acronyms (text/csv file with one gene per row, or with linker sequences).\n"
+            "File containing gene acronyms "
+            "(text/csv file with one gene per row, or with linker sequences).\n"
             "Just press Enter if input sequences can be provided:\n"
         )
         if len(genefile):
@@ -228,7 +236,8 @@ def getdesigninput():
                 "/nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design/data/olfr_consensus_cds_3utr_annotations.csv"
             )
 
-            # Build symbol(lowercased) -> first-seen alias mapping (preserves original behavior)
+            # Build symbol(lowercased) -> first-seen alias mapping
+            # (preserves original behavior)
             symbol_to_alias = {}
             for _, row in conversion_table.iterrows():
                 symbol = str(row["gene_name"])
@@ -240,7 +249,8 @@ def getdesigninput():
                     symbol_to_alias[key] = aliases[0]
 
             def to_alias(name: str) -> str:
-                """Return the alias for a given gene name, or the original if none found."""
+                """Return the alias for a given gene name,
+                or the original if none found."""
                 return symbol_to_alias.get(name.lower(), name)
 
             genes = [to_alias(g) for g in genes]
@@ -300,14 +310,17 @@ def getdesigninput():
     while not success_t:
         t1 = input(
             "The lower threshold for target Tm\n"
-            "(0.1 uM oligo conc., 0.075 M monovalent salt, 0.01 M bivalent salt, 20% formamide): "
+            "(0.1 uM oligo conc., 0.075 M monovalent salt, 0.01 M bivalent salt, "
+            "20 percent formamide): "
         )
         temp = tmthreshold(int(t1), 0)
         if temp:
             while not success_t:
                 t2 = input(
                     "The upper threshold for target Tm\n"
-                    "(0.1 uM oligo conc., 0.075 M monovalent salt, 0.01 M bivalent salt, 20% formamide): "
+                    "(0.1 uM oligo conc., 0.075 M monovalent salt, "
+                    "0.01 M bivalent salt, "
+                    "20 percent formamide): "
                 )
                 success_t = tmthreshold(int(t2), int(t1))
 
@@ -338,7 +351,8 @@ def getdesigninput():
                     os.path.join(outdir, "0.AcronymNotFound_" + t + ".txt"), "w"
                 ) as f:
                     f.write(
-                        "Some gene acronyms were converted using Ensembl synonym dictionary \n"
+                        "Some gene acronyms were converted using "
+                        "Ensembl synonym dictionary \n"
                     )
                     f.write("%s -> %s\n" % (genes[0], f"{translated_id}"))
                     f.write("Please make sure these are the intended genes.\n\n")
@@ -439,7 +453,7 @@ def getdesigninput():
             )
             f.write("Number of genes with multiple sequence variants: %d\n" % len(msa))
             f.write(
-                "Number of genes with no common sequence after multiple sequence alignment: %d\n"
+                "Number of genes with no common sequence after msa: %d\n"
                 % len(nocommon)
             )
         else:

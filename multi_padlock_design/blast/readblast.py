@@ -201,7 +201,6 @@ dna_IMM1 = {
     "GG/GT": (4.1, 5.4),
     "GG/TA": (2.2, -1.1),
     "GG/TG": (2.2, -1.1),
-    "GG/TT": (1.6, -1.1),
     "GT/AC": (4.6, 6.6),
     "GT/AG": (4.5, 6.6),
     "GT/AT": (5.1, 6.6),
@@ -209,7 +208,6 @@ dna_IMM1 = {
     "GT/GG": (4.1, 5.0),
     "GT/GT": (4.6, 5.0),
     "GT/TC": (2.2, -1.5),
-    "GT/TG": (2.6, -1.5),
     "GT/TT": (2.0, -1.5),
     "TA/CA": (4.6, 6.6),
     "TA/CC": (4.8, 6.6),
@@ -234,7 +232,6 @@ dna_IMM1 = {
     "TG/CT": (5.0, 7.3),
     "TG/GA": (4.2, 5.4),
     "TG/GG": (4.2, 5.4),
-    "TG/GT": (4.7, 5.4),
     "TG/TA": (2.8, -1.1),
     "TG/TG": (2.8, -1.1),
     "TG/TT": (2.2, -1.1),
@@ -511,7 +508,7 @@ def has_gap_or_mismatch(query, subject, ligation_site, start_pos, buffer=3):
 
 def split_arms(query, subject, ligation_site, start_pos):
     """
-    Split query and subject into left/right arms, using the ligation site relative to the
+    Split query and subject into left/right arms,using the ligation site relative to the
     original ungapped 40bp query. Gaps ('-') in the query do not count toward the split
     position, but are preserved in the output strings. The subject is split at the same
     character index as the query to preserve alignment.
@@ -519,11 +516,14 @@ def split_arms(query, subject, ligation_site, start_pos):
     Args:
         query (str): Query sequence (may contain '-')
         subject (str): Subject sequence (may contain '-')
-        ligation_site (int): 1-based ligation site position in the original 40bp sequence
-        start_pos (int): 1-based start position of this query segment relative to the original 40bp
+        ligation_site (int): 1-based ligation site position
+        in the original 40bp sequence
+        start_pos (int): 1-based start position of this query segment
+        relative to the original 40bp
 
     Returns:
-        tuple[str, str, str, str]: (query_left, query_right, subject_left, subject_right)
+        tuple[str, str, str, str]:
+        (query_left, query_right, subject_left, subject_right)
     """
     # Number of non-gap bases from the start of the query to include in the left arm
     split_point = ligation_site - start_pos
@@ -558,7 +558,8 @@ def split_arms(query, subject, ligation_site, start_pos):
 
 def fill_gaps(query, subject):
     """
-    Fills gaps in query or subject sequence with corresponding base from the other sequence.
+    Fills gaps in query or subject sequence with corresponding
+    base from the other sequence.
 
     Args:
         query (str): The query sequence containing possible gaps.
@@ -626,10 +627,12 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                     scores = columns[2:]
                     print(f"Hit: {hit}")
                     if len(scores):
-                        # remove the first empty column (somehow appears in some db and blast versions)
+                        # remove the first empty column
+                        # (somehow appears in some db and blast versions)
                         if "" in scores:
                             scores.remove("")
-                        # Filter hits based on Tm of each arm and mismatches near the ligation site
+                        # Filter hits based on Tm of each arm and mismatches
+                        # near the ligation site
                         ligation_site = armlength + 1
                         # query is the padlock sequence
                         query_seq = columns[12]
@@ -637,12 +640,15 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                         subject_seq = columns[13].split("\n")[0]
                         query_start = int(columns[6])
                         if specificity_by_tm:
-                            # First check if the sequences have gaps or mismatches near the ligation site
+                            # First check if the sequences have gaps or
+                            # mismatches near the ligation site
                             if not has_gap_or_mismatch(
                                 query_seq, subject_seq, ligation_site, query_start
                             ):
-                                # Then split the sequences into left and right arms using actual start
-                                # position of matched sequence; use query-derived split for both
+                                # Then split the sequences into
+                                # left and right arms using actual start
+                                # position of matched sequence; use
+                                # query-derived split for both
                                 (
                                     query_left,
                                     query_right,
@@ -656,8 +662,10 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                 query_right = query_right.strip()
                                 subject_right = subject_right.strip()
                                 if query_left:
-                                    # Next fill gaps in the sequences. This is being generous
-                                    # so that we err on the side of caution with potential non-specific hits
+                                    # Next fill gaps in the sequences.
+                                    # This is being generous
+                                    # so that we err on the side of caution
+                                    #  with potential non-specific hits
                                     query_left, subject_left = fill_gaps(
                                         query_left, subject_left
                                     )
@@ -665,7 +673,7 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                     tm_left = calc_tm_NN(
                                         seq=query_left, cseq=subject_left
                                     )
-                                    tm_no_mismatch_left = calc_tm_NN(seq=query_left)
+                                    calc_tm_NN(seq=query_left)
                                 else:
                                     tm_left = None
                                 if query_right:
@@ -675,7 +683,7 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                     tm_right = calc_tm_NN(
                                         seq=query_right, cseq=subject_right
                                     )
-                                    tm_no_mismatch_right = calc_tm_NN(seq=query_right)
+                                    calc_tm_NN(seq=query_right)
                                 else:
                                     tm_right = None
                                 # If both arms have Tm > 37, it's a valid probe
@@ -685,8 +693,10 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                     print("Valid probe")
                                     # First check if variants are provided
                                     if len(variants):
-                                        # If they are and the hit is not in them, this is a non specific hit
-                                        # check if we are using Ensembl ID's because versions in the IDs are tricky
+                                        # If they are and the hit is not in them,
+                                        # this is a non specific hit
+                                        # check if we are using Ensembl ID's
+                                        # because versions in the IDs are tricky
                                         if config.reference_transcriptome == "ensembl":
                                             # Strip version suffixes for comparison
                                             hit_core = hit.split(".")[0]
@@ -703,7 +713,8 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                                     variants[0].split(".")[0]
                                                 ]
                                         else:
-                                            # no version number on refseq so just compare directly
+                                            # no version number on refseq
+                                            # so just compare directly
                                             hit_core = hit
                                             variant_cores = (
                                                 variants
@@ -737,19 +748,25 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                             specific = False
                                         # Otherwise, the hit is specific
                                         else:
-                                            # And if it's a perfect match mark it as mappable
+                                            # And if it's a perfect
+                                            # match mark it as mappable
                                             if (
                                                 float(scores[0]) == 100
                                                 and int(scores[1]) == totallen
                                             ):
                                                 mappable = True
-                                    # If no variants are provided, check if the hit is the same as the input sequence
+                                    # If no variants are provided, check if the hit is
+                                    # the same as the input sequence
                                     else:
                                         import warnings
 
                                         warnings.warn(
-                                            "No gene variants searched for due to providing fasta input, \
-                                                    only checking if blast hits are the same as the input sequence"
+                                            (
+                                                "No gene variants searched for "
+                                                "due to providing fasta input, "
+                                                "only checking if blast hits are "
+                                                "the same as the input sequence"
+                                            )
                                         )
                                         if hit not in file.split("/")[-1]:
                                             specific = False
@@ -804,8 +821,12 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                     import warnings
 
                                     warnings.warn(
-                                        "No gene variants searched for due to providing fasta input, \
-                                                only checking if blast hits are the same as the input sequence"
+                                        (
+                                            "No gene variants searched for due to "
+                                            "providing fasta input, "
+                                            "only checking if blast hits "
+                                            "are the same as the input sequence"
+                                        )
                                     )
                                     if hit not in file.split("/")[-1]:
                                         specific = False
@@ -819,10 +840,11 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                 print("Invalid probe")
 
                         # print(
-                        #     f"Tm left:             {tm_left:.2f} C  Tm right:             {tm_right:.2f} C"
+                        #     f"Tm left: {tm_left:.2f} C  Tm right: {tm_right:.2f} C"
                         # )
                         # print(
-                        #     f"Tm no mismatch left: {tm_no_mismatch_left:.2f} C  Tm no mismatch right: {tm_no_mismatch_right:.2f} C"
+                        #     f"Tm no mismatch left: {tm_no_mismatch_left:.2f} C
+                        #     f"Tm no mismatch right: {tm_no_mismatch_right:.2f} C"
                         # )
                         # print("Q left:", query_left, "Q right:", query_right)
                         # print("S left:", subject_left, "S right:", subject_right)
@@ -836,7 +858,8 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                     funmap.write(seq[1])
                     notmapped.append(int(file[:-10].split("_")[-1]) - 1)
 
-    # if no blast results returned, ignore the sequence (can be due to error in blast+ or due to no similar sequence)
+    # if no blast results returned, ignore the sequence
+    # (can be due to error in blast+ or due to no similar sequence)
     if noblast:
         specific = False
     return specific
@@ -891,7 +914,7 @@ def getcandidates(
                     anno_df = pd.read_csv(config.annotation_file)
                 except Exception as e:
                     print(
-                        f"Could not read annotation_file '{config.annotation_file}': {e}"
+                        f"Could not read annotation_file '{config.annotation_file}':{e}"
                     )
 
             raw_basename = fname.split("/")[-1]
@@ -902,13 +925,15 @@ def getcandidates(
 
             def _extract_match_key(line: str):
                 """
-                Return a tuple (style, key_for_matching) or (None, None) if no key found.
+                Return a tuple (style, key_for_matching) or (None, None)
+                  if no key found.
                 style in {"refseq","ensembl","custom"}
                 """
                 first_tok = (
                     line[1:].split()[0] if line.startswith(">") and line[1:] else ""
                 )
-                # RefSeq / predicted RefSeq style: keep entire accession token (with version) if starts with NM, NR, or XM
+                # RefSeq / predicted RefSeq style: keep entire accession token
+                # (with version) if starts with NM, NR, or XM
                 if first_tok.startswith(("NM", "NR", "XM")):
                     return "refseq", first_tok.split(".")[0]
 
@@ -969,7 +994,8 @@ def getcandidates(
                         print(f"m_sym: {m_sym.group(1)}")
                         if m_sym:
                             gene_symbol = m_sym.group(1)
-                            # Collect all accessions whose header contains the same gene symbol
+                            # Collect all accessions whose header
+                            # contains the same gene symbol
                             for ref_line in Headers:
                                 r_sym = re.search(
                                     r"\(([^)]+)\)(?!.*\([^)]+\))", ref_line
@@ -983,7 +1009,8 @@ def getcandidates(
                                             matching_lines.append(
                                                 (transcript_var, style)
                                             )
-                        # Early exit: we have resolved the refseq block and don't need further outer iterations
+                        # Early exit: we have resolved the refseq block and don't need
+                        # further outer iterations
                         break
                 else:
                     if key.lower() == qkey_lower:
@@ -992,7 +1019,8 @@ def getcandidates(
             if matching_lines:
                 variants = []
                 for ln, style in matching_lines:
-                    # First token (ID) after '>' for RefSeq/Ensembl; entire header minus '>' for custom
+                    # First token (ID) after '>' for RefSeq/Ensembl; entire header minus
+                    # '>' for custom
                     first_token = (
                         ln[1:].split()[0] if ln.startswith(">") else ln.split()[0]
                     )

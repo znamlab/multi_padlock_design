@@ -23,14 +23,6 @@ repos:
           args: [ --config=pyproject.toml ]
         - id: ruff-format
           args: [ --config=pyproject.toml ]
-    - repo: https://github.com/pre-commit/mirrors-mypy
-      rev: v1.3.0
-      hooks:
-          - id: mypy
-            additional_dependencies:
-                - types-setuptools
-                - types-decorator
-                - types-PyYAML
     - repo: https://github.com/mgedmin/check-manifest
       rev: "0.49"
       hooks:

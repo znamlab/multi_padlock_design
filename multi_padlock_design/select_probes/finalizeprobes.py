@@ -64,19 +64,19 @@ def assembleprobes(targets, genepars, armlength):
         try:
             linker1 = linkers[c][0]
             linker1[0]
-        except:
+        except Exception:
             linker1 = "ATCGTCGGACTGTAGAACTCTGAACCTGTCG"
 
         try:
             barcode = linkers[c][1]
             barcode[0]
-        except:
+        except Exception:
             barcode = "NNNNNNNNNN"
 
         try:
             linker2 = linkers[c][2]
             linker2[0]
-        except:
+        except Exception:
             linker2 = "CT"
 
         padlocks = []
@@ -102,7 +102,8 @@ def removeunmapped(notmapped, targetpos, headers, targets, Tm, probes):
 
 
 def selectprobes(n, finals, headers, armlength, outpars):
-    """Prioritize probes with no homopolymer sequences and choose randomly n candidates per region
+    """Prioritize probes with no homopolymer sequences and
+    choose randomly n candidates per region
 
     Args:
         n (int): number of probes per region
@@ -147,7 +148,8 @@ def selectprobes(n, finals, headers, armlength, outpars):
             row = None
             if anno_df is not None and len(targetpos[i]) > 0:
                 print("Annotation DataFrame found.")
-                # Prefer exact match on gene_symbol column; fall back to gene_name/name if needed
+                # Prefer exact match on gene_symbol column
+                # fall back to gene_name/name if needed
                 subset = None
                 print(f"Header: {header}")
                 if "gene_symbol" in anno_df.columns:
@@ -166,7 +168,8 @@ def selectprobes(n, finals, headers, armlength, outpars):
                 # Cannot classify without a match
                 regions = [None] * len(targetpos[i])
             else:
-                # Parse CDS tuple "(start, end)"; 3'UTR available but not needed for classification
+                # Parse CDS tuple "(start, end)";
+                # 3'UTR available but not needed for classification
                 cds_tuple = None
                 try:
                     val = row["cds"]
@@ -182,7 +185,8 @@ def selectprobes(n, finals, headers, armlength, outpars):
                             pos, target_end[index], cds_start, cds_end
                         )
                         # There is no 5'UTR when using the annotation file:
-                        # strip any "5'UTR" labels; if nothing remains, treat as unclassified.
+                        # strip any "5'UTR" labels; if nothing remains,
+                        # treat as unclassified.
                         if isinstance(reg, list):
                             reg = [r for r in reg if r != "5'UTR"]
                             reg = reg if len(reg) else None
@@ -215,7 +219,9 @@ def selectprobes(n, finals, headers, armlength, outpars):
             print(cds_headers)
             cds_entries = find_cds_entries(cds_headers, gene_symbol)
             print(f"cds entries: {cds_entries}")
-            # Iterate, check if it's in the variant list, if it's not, bad luck, complain.
+            # Iterate, check if it's in the variant list,
+            # if it's not, complain.
+
             # define variant list
             variants = find_latest_variants_fasta(tempdir)
             print(variants)
@@ -255,7 +261,8 @@ def selectprobes(n, finals, headers, armlength, outpars):
                     )
         print(f"Found Regions: {regions}")
         binding_regions = config.binding_regions
-        # Keep only probes whose classified regions intersect the allowed binding regions
+        # Keep only probes whose classified regions
+        # intersect the allowed binding regions
         filtered_results = [
             (index, region)
             for index, region in enumerate(regions)
@@ -279,11 +286,13 @@ def selectprobes(n, finals, headers, armlength, outpars):
                 reason = "unclassified region (no match to CDS/annotation)"
                 if reg:
                     if not any(elem in allowed_set for elem in reg):
-                        reason = f"region not allowed (region={reg}, allowed={binding_regions})"
+                        reason = f"region not allowed (region={reg}, "
+                        f"allowed={binding_regions})"
                 print(
-                    f"Dropping (region filter) header={header} idx={idx} reason={reason}; "
-                    f"target_pos={targetpos[i][idx] if idx < len(targetpos[i]) else 'NA'}; "
-                    f"Tm={(Tm[i][idx] if idx < len(Tm[i]) else 'NA')}; "
+                    f"Dropping (region filter) header={header} "
+                    f"idx={idx} reason={reason}; "
+                    f"tget_pos={targetpos[i][idx] if idx < len(targetpos[i]) else 'NA'}"
+                    f": Tm={(Tm[i][idx] if idx < len(Tm[i]) else 'NA')}; "
                     f"probe_seq={probes[i][idx] if idx < len(probes[i]) else 'NA'}"
                 )
 
@@ -343,20 +352,23 @@ def selectprobes(n, finals, headers, armlength, outpars):
                     simplebase.append(c)
                     reasons_map[c].append(">=5 identical base run in target")
                 else:
-                    # Chop the target sequence into substrings of length 10 with a step of 5
+                    # Chop the target sequence into
+                    # substrings of length 10 with a step of 5
                     substring = chopseq(target, 10, 5)
 
                     # Count the number of unique bases in each substring
                     nbase = [len(set(j)) for j in substring]
 
-                    # If any substring has only 1 or 2 unique bases, it is considered simple
+                    # If any substring has only 1 or 2 unique bases,
+                    #  it is considered simple
                     if 1 in nbase or 2 in nbase:
                         simplebase.append(c)
                         reasons_map[c].append(
                             "low complexity in 10-mer window (<=2 unique bases)"
                         )
                     else:
-                        # Chop the target sequence into substrings of length 2 with a step of 2
+                        # Chop the target sequence into substrings
+                        # of length 2 with a step of 2
                         substring = chopseq(target, 2, 2)
 
                         # Get the unique substrings
@@ -365,7 +377,8 @@ def selectprobes(n, finals, headers, armlength, outpars):
                         # Count the occurrence of each unique substring
                         ndoublets = [substring.count(i) for i in unique_substring]
 
-                        # If the most common substring appears less than 4 times, it is considered complex
+                        # If the most common substring appears less than 4 times,
+                        # it is considered complex
                         if max(ndoublets) < 4:
                             complexbase.append(c)
                         else:
@@ -379,7 +392,9 @@ def selectprobes(n, finals, headers, armlength, outpars):
                             # Assume the sequence is not simple
                             simple = False
 
-                            # If any of the most common substrings is not a homopolymer and appears 4 times consecutively in the target, it is considered simple
+                            # If any of the most common substrings is not a homopolymer
+                            # and appears 4 times consecutively in the target,
+                            # it is considered simple
                             for j in idx:
                                 if (
                                     unique_substring[j] not in ["AA", "CC", "GG", "TT"]
@@ -392,7 +407,7 @@ def selectprobes(n, finals, headers, armlength, outpars):
                             if simple:
                                 simplebase.append(c)
                                 reasons_map[c].append(
-                                    "repeated non-homopolymer doublet x4 consecutively in target"
+                                    "repeated non-homopolymer doublet x4 in target"
                                 )
                             else:
                                 # Otherwise, add it to the complex base list
@@ -534,7 +549,8 @@ def classify_region(target_start, target_end, cds_start, cds_end, include_5utr=T
         target_end (int): End position of the probe binding region
         cds_start (int): Start position of the CDS
         cds_end (int): End position of the CDS
-        include_5utr (bool): If False, do not return "5'UTR" (used when annotation file lacks 5'UTR)
+        include_5utr (bool): If False, do not return "5'UTR"
+        (used when annotation file lacks 5'UTR)
     """
     if (
         target_start is None
@@ -545,7 +561,8 @@ def classify_region(target_start, target_end, cds_start, cds_end, include_5utr=T
         return None
 
     if not include_5utr:
-        # Treat pre-CDS-only binding as not classifiable (since there's no 5'UTR in the annotation file)
+        # Treat pre-CDS-only binding as not classifiable
+        # (since there's no 5'UTR in the annotation file)
         if target_end < cds_start:
             return None
         elif (target_start < cds_start) and (target_end <= cds_end):

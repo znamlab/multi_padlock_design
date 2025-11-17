@@ -1,12 +1,3 @@
-import os
-import sys
-from pathlib import Path
-from typing import List
-
-from Bio import SeqIO
-
-import multi_padlock_design.config as config
-
 """
 Split a multi-record FASTA file into per-gene FASTA files.
   - Gene name taken as the first whitespace-delimited token of the record.description
@@ -24,6 +15,15 @@ Examples:
   python fasta_splitter.py olfr_consensus_cds_3utr.fa --no-list
   python fasta_splitter.py olfr_consensus_cds_3utr.fa /tmp/output_fastas --no-list
 """
+
+import os
+import sys
+from pathlib import Path
+from typing import List
+
+from Bio import SeqIO
+
+import multi_padlock_design.config as config
 
 
 def extract_gene_name(description: str) -> str:

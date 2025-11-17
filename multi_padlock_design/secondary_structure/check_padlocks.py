@@ -62,7 +62,7 @@ def find_off_targets(gene, blast_query_path, armlength=20):
     )
     failed_match = False
     if getattr(config, "reference_transcriptome", "").lower() == "refseq":
-        variants = find_variants(gene)
+        find_variants(gene)
     elif getattr(config, "reference_transcriptome", "").lower() == "ensembl":
         if getattr(config, "annotation_file", None):
             # Convert Olfr gene name to gene symbol
@@ -78,18 +78,22 @@ def find_off_targets(gene, blast_query_path, armlength=20):
                         gene = match.values[0]
                     else:
                         warnings.warn(
-                            f"Gene '{gene}' not found in annotation_file; using original gene name."
+                            f"Gene '{gene}' not found in annotation_file;"
+                            f" using original gene name."
                         )
                         failed_match = True
                 else:
                     warnings.warn(
-                        "annotation_file missing required columns 'gene_name' and 'gene_symbol'; using original gene name."
+                        "annotation_file missing required columns "
+                        "'gene_name' and 'gene_symbol'; using original gene name."
                     )
             except Exception as e:
                 warnings.warn(
-                    f"Failed to map gene using annotation_file ({e}); using original gene name."
+                    f"Failed to map gene using annotation_file ({e});"
+                    f" using original gene name."
                 )
-    # Trigger variant discovery (result unused here; retained for side effects or future use)
+    # Trigger variant discovery
+    # (result unused here; retained for side effects or future use)
     find_variants(gene)
     # Exclude known variants
     # df = df.loc[~(df[1].isin(variants))]
@@ -109,7 +113,8 @@ def find_variants(gene):
     """Find transcript/accession variants corresponding to a gene.
     For Olfr genes:
       - Rows containing '|' are split (take the part before the first '|').
-      - For those rows, if an annotation file is provided (expects columns: gene_name,gene_symbol),
+      - For those rows, if an annotation file is provided
+      (expects columns: gene_name,gene_symbol),
         attempt to replace the split name with its gene_symbol.
       - Other rows remain unchanged.
     """
@@ -260,8 +265,10 @@ _GENE_VARIANT_INDEX = None
 
 def _build_gene_variant_index():
     """
-    Build and return a dict: gene_name (or mapped gene_symbol) -> list of accession variants.
-    Replicates the transformation logic from find_variants but does it once for all genes.
+    Build and return a dict: gene_name (or mapped gene_symbol)
+      -> list of accession variants.
+    Replicates the transformation logic from find_variants
+    but does it once for all genes.
     """
     ref_path = os.path.join(config.BASE_DIR, config.reference_transcriptome)
     acronym_path = os.path.join(ref_path, f"{config.species}.acronymheaders.txt")
@@ -298,7 +305,8 @@ def _build_gene_variant_index():
     variant_index = {}
     for idx, gene in enumerate(acronyms_df["gene_name"]):
         header = selected_headers[idx]
-        # format like format_variants would (strip '>' and take token before first space)
+        # format like format_variants would
+        # (strip '>' and take token before first space)
         acc = header.replace(">", "").split(" ")[0]
         variant_index.setdefault(gene, []).append(acc)
 
@@ -928,19 +936,26 @@ def run_melting_batch(
     use_slurm=False,
 ):
     """
-    Run melting-batch command for a batch of sequences and return their melting temperatures.
+    Run melting-batch command for a batch of sequences and
+    return their melting temperatures.
 
     Parameters:
         sequences (list): List of sequences (strings) to process.
-        complements (list): List of complementary sequences (optional). If not provided, they will be generated automatically.
+        complements (list): List of complementary sequences (optional). If not provided,
+        they will be generated automatically.
         filename (str): Name of the batch input file to create.
-        Na, Mg, Tris, formamide, K, dnac: Experimental concentration parameters for the calculation, applied to all sequences.
-        form_method (str): Formamide correction method to use. Choose either 'lincorr' (% formamide) or 'bla96' (mol/L)
-        oligo_conc_form (int): Oligo concentration formula (1 for equimolar oligos, 4 for sequence in excess of complement)
-        use_slurm (bool): If True, run melting-batch on the current SLURM node (expects `ml melting` already loaded).
+        Na, Mg, Tris, formamide, K, dnac: Experimental concentration parameters
+        for the calculation, applied to all sequences.
+        form_method (str): Formamide correction method to use. Choose either 'lincorr'
+          (% formamide) or 'bla96' (mol/L)
+        oligo_conc_form (int): Oligo concentration formula (1 for equimolar oligos,
+        4 for sequence in excess of complement)
+        use_slurm (bool): If True, run melting-batch on the current SLURM node
+        (expects `ml melting` already loaded).
 
     Returns:
-        dict: A dictionary where keys are sequence pairs, and values are their respective melting temperatures.
+        dict: A dictionary where keys are sequence pairs, and values are their
+        respective melting temperatures.
     """
     # Create the melting-batch input file
     if complements is None:
@@ -953,7 +968,8 @@ def run_melting_batch(
     # Ensure absolute path for input file
     with open(filename, "w") as f:
         for s_arg, c_arg in zip(sequences, complements):
-            # Write each sequence and its complement on the same line, separated by a space
+            # Write each sequence and its complement on the same line,
+            # separated by a space
             f.write(f"{s_arg} {c_arg}\n")
     # Get the full path to the file
     filename = os.path.abspath(filename)
@@ -1000,7 +1016,8 @@ def run_melting_batch(
 
     if completed.returncode != 0:
         raise RuntimeError(
-            f"melting-batch failed (code {completed.returncode}). stderr:\n{completed.stderr}"
+            f"melting-batch failed (code {completed.returncode})."
+            f" stderr:\n{completed.stderr}"
         )
 
     # Locate the result file robustly
@@ -1349,7 +1366,8 @@ def ensure_bins():
         except FileNotFoundError:
             raise RuntimeError(
                 f"Required RNAstructure binary '{b}' not found on PATH. "
-                "Install via 'conda install rnastructure' or set RNASTRUCTURE_*_BIN env vars."
+                "Install via 'conda install rnastructure' or set RNASTRUCTURE_*_BIN"
+                " env vars."
             )
     _BINS_CHECKED = True
 
@@ -1559,7 +1577,8 @@ def compute_intrastrand(df: pd.DataFrame, n_jobs: int | None = None) -> pd.DataF
 
     Args:
         df (pd.DataFrame): Input DataFrame with a "padlock" column containing sequences
-        n_jobs (int | None): Number of parallel jobs to use. If None or 1, runs serially.
+        n_jobs (int | None): Number of parallel jobs to use.
+        If None or 1, runs serially.
     Returns:
         pd.DataFrame: DataFrame with added "hairpin_dg_kcalmol" and
                       "homodimer_dg_kcalmol" columns.
@@ -1675,7 +1694,8 @@ def prescore_pairs_by_runlen(i, candidate_js, seqs, max_for_thermo: int):
         i (int): The index of the oligo to prescore candidates for.
         candidate_js (list): The list of candidate oligo indices.
         seqs (list): The list of oligo sequences.
-        max_for_thermo (int): The maximum number of candidates to return for thermodynamic evaluation.
+        max_for_thermo (int): The maximum number of candidates
+          to return for thermodynamic evaluation.
     Returns:
         list: A list of prescored candidate oligo indices.
     """
@@ -1759,20 +1779,24 @@ def annotate_with_thermo(
     n_jobs: int | None = None,  # control parallelism
 ) -> pd.DataFrame:
     """
-    Annotate with hairpin/homodimer (serial) and best heterodimer (parallelized with dedup).
+    Annotate with hairpin/homodimer (serial) and best heterodimer
+    (parallelized with dedup).
     Each unique unordered pair (i, j) from all shortlists is evaluated exactly once.
 
     Args:
         df (pd.DataFrame): Input DataFrame with a "padlock" column containing sequences
         kmer (int): k-mer length for indexing (default: 10)
         max_candidates (int): Max candidates to shortlist per oligo (default: 250)
-        max_for_thermo (int): Max candidates per oligo to evaluate thermodynamically (default: 80)
-        n_jobs (int | None): Number of parallel jobs to use. If None, defaults to min(8, cpu_count).
+        max_for_thermo (int): Max candidates per oligo to evaluate thermodynamically
+            (default: 80)
+        n_jobs (int | None): Number of parallel jobs to use. If None,
+            defaults to min(8, cpu_count).
     Returns:
         pd.DataFrame: DataFrame with added columns:
                       "hairpin_dg_kcalmol", "homodimer_dg_kcalmol",
                       "best_heterodimer_dg_kcalmol", "best_heterodimer_partner",
-                      "heterodimer_candidate_dgs_kcalmol", "heterodimer_candidate_partners"
+                      "heterodimer_candidate_dgs_kcalmol",
+                      "heterodimer_candidate_partners"
     """
     df = prepare_df(df)
 
@@ -1818,7 +1842,8 @@ def annotate_with_thermo(
         out["best_heterodimer_partner"] = [None] * N
         return out
 
-    # Step 3c: parallel DuplexFold over unique pairs with tqdm and bounded in-flight futures
+    # Step 3c: parallel DuplexFold over unique pairs
+    # with tqdm and bounded in-flight futures
     if n_jobs is None:
         n_jobs = max(1, min(8, (os.cpu_count() or 2)))
 
@@ -1854,7 +1879,8 @@ def annotate_with_thermo(
                 inflight.add(ex.submit(_duplex_task, pair))
         pbar.close()
 
-    # Step 3d: for each oligo, pick best partner from its shortlist using cached energies
+    # Step 3d: for each oligo, pick best partner from its
+    #  shortlist using cached energies
     best_hdgs = [np.nan] * N
     best_partners = [None] * N
     cand_dgs = [[] for _ in range(N)]

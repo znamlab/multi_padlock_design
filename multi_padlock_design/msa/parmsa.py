@@ -1,4 +1,5 @@
-# run parallel multiple sequence alignment (ClustalW) to find common sequences of transcript variants
+# run parallel multiple sequence alignment (ClustalW) to find
+# common sequences of transcript variants
 # for multi_padlock_design
 # Xiaoyan, 2016-8-4
 
@@ -37,7 +38,8 @@ def readmsa(alnfile):
             elif line == "\n":
                 if nvars == 0 and row > 2:
                     nvars = row
-                    nvars -= 4  # first three rows are always dummy rows, and the last row before empty new line is the alignment line
+                    nvars -= 4  # first three rows are always dummy rows, and the last
+                    # row before empty new line is the alignment line
             else:
                 alnresult.append(line)
 
@@ -63,7 +65,8 @@ def readmsa(alnfile):
         sequence += line
         alnline += alnresult[(row + 1) * (nvars + 1) - 1]
 
-    # define starting and end positions of aligned regions, ignoring matches shorter than 20bp
+    # define starting and end positions of aligned regions,
+    # ignoring matches shorter than 20bp
     aligned = []
     alnindex_start = -1
     alnindex_end = -1
@@ -88,7 +91,8 @@ def readmsa(alnfile):
     if len(aligned) > 1 and aligned[-1] == aligned[-2]:
         del aligned[-1]
 
-    # convert to original base index (based on the first sequence in alignment) and get sequences
+    # convert to original base index (based on the first sequence in alignment)
+    # and get sequences
     baseindex = []
     alnseq = []
     for i in aligned:

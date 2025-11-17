@@ -119,7 +119,8 @@ def calculatetm(seq):
 
 
 def runscreen(argin):
-    """Screen Tm and write sequences that fulfill Tm requirement to file, to use as blast input"""
+    """Screen Tm and write sequences that fulfill Tm requirement to file,
+    to use as blast input"""
     dirname, header, seq, armlen, t1, t2, totallen = argin
     fname = createoutput.blastinfilename(dirname, header)
 
