@@ -25,12 +25,15 @@ except ModuleNotFoundError:
 
 from tqdm import tqdm
 from tqdm.auto import tqdm as _tqdm
-
-from multi_padlock_design.blast.readblast import (calc_tm_NN, fill_gaps,
-                                                  has_gap_or_mismatch,
-                                                  split_arms)
-from multi_padlock_design.io import formatrefseq
 from znamutils import slurm_it
+
+from multi_padlock_design.blast.readblast import (
+    calc_tm_NN,
+    fill_gaps,
+    has_gap_or_mismatch,
+    split_arms,
+)
+from multi_padlock_design.io import formatrefseq
 
 
 def find_off_targets(gene, blast_query_path, armlength=20):

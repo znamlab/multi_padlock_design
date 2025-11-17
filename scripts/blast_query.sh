@@ -29,4 +29,3 @@ PY
 SCRATCH_DIR=/nemo/lab/znamenskiyp/scratch
 
 blastn -query $INPUT -db "$DB_PATH" -outfmt "10 std qseq sseq" -out "${INPUT%.*}_blast.out" -word_size 7 -strand plus
-

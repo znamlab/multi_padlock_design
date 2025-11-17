@@ -686,18 +686,30 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
                                     # First check if variants are provided
                                     if len(variants):
                                         # If they are and the hit is not in them, this is a non specific hit
-                                        #check if we are using Ensembl ID's because versions in the IDs are tricky
+                                        # check if we are using Ensembl ID's because versions in the IDs are tricky
                                         if config.reference_transcriptome == "ensembl":
                                             # Strip version suffixes for comparison
-                                            hit_core = hit.split('.')[0]
-                                            if isinstance(variants[0], list): #multiple variants
-                                                variant_cores = [v.split('.')[0] for v in variants[0]]
-                                            elif isinstance(variants[0], str): #one variant
-                                                variant_cores = [variants[0].split('.')[0]]
+                                            hit_core = hit.split(".")[0]
+                                            if isinstance(
+                                                variants[0], list
+                                            ):  # multiple variants
+                                                variant_cores = [
+                                                    v.split(".")[0] for v in variants[0]
+                                                ]
+                                            elif isinstance(
+                                                variants[0], str
+                                            ):  # one variant
+                                                variant_cores = [
+                                                    variants[0].split(".")[0]
+                                                ]
                                         else:
-                                            #no version number on refseq so just compare directly
+                                            # no version number on refseq so just compare directly
                                             hit_core = hit
-                                            variant_cores = variants if isinstance(variants, list) else [variants]
+                                            variant_cores = (
+                                                variants
+                                                if isinstance(variants, list)
+                                                else [variants]
+                                            )
                                         if hit_core not in variant_cores:
                                             # Log non-specific hits to a file
                                             if isinstance(variants, list):
@@ -831,7 +843,13 @@ def readblastout(file, armlength, variants, totallen, specificity_by_tm=False):
 
 
 def getcandidates(
-    listSiteChopped, headers, dirnames, armlength, accession, specificity_by_tm, totallen
+    listSiteChopped,
+    headers,
+    dirnames,
+    armlength,
+    accession,
+    specificity_by_tm,
+    totallen,
 ):
     """Get the candidates for the probes
 
@@ -997,7 +1015,9 @@ def getcandidates(
             for j, target in enumerate(sites):
                 fblast = fname + "_" + str(j + 1) + "_blast.txt"
                 blast_bw.append(
-                    readblastout(fblast, armlength, variants, totallen, specificity_by_tm)
+                    readblastout(
+                        fblast, armlength, variants, totallen, specificity_by_tm
+                    )
                 )
 
             # find sequences that are specific enough
@@ -1006,7 +1026,7 @@ def getcandidates(
             sitespecific = tempCandidates[idxspecific]
 
             # write unmappable sites
-            print(f'Not mapped before assignment: {notmapped}')
+            print(f"Not mapped before assignment: {notmapped}")
             notmapped = tempCandidates[notmapped]
             recorded = False
             temp = None

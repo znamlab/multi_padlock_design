@@ -20,7 +20,7 @@ def write_row(out_dir: Path, row: Iterable[str]):
     if not cols:
         return
     filename = out_dir / f"{cols[0]}.csv"
-    with open(filename, 'w', newline='') as newfile:
+    with open(filename, "w", newline="") as newfile:
         csvwriter = csv.writer(newfile)
         csvwriter.writerow(cols)
     print(f"Created file: {filename}")
@@ -34,7 +34,7 @@ def split_csv(input_csv: str, output_dir: Path | None = None):
         output_dir = split_input / input_path.stem
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    with open(input_csv, 'r', newline='') as csvfile:
+    with open(input_csv, "r", newline="") as csvfile:
         reader = csv.reader(csvfile)
         for row in reader:
             if row:
@@ -51,24 +51,24 @@ def parse_args(argv):
     i = 1
     while i < len(argv):
         arg = argv[i]
-        if arg == '--out':
+        if arg == "--out":
             if i + 1 >= len(argv):
-                print('--out requires a path')
+                print("--out requires a path")
                 sys.exit(1)
             output_dir = Path(argv[i + 1])
             i += 2
-        elif arg.startswith('-'):
-            print(f'Unknown option {arg}')
+        elif arg.startswith("-"):
+            print(f"Unknown option {arg}")
             sys.exit(1)
         else:
             if input_csv is None:
                 input_csv = arg
             else:
-                print('Unexpected extra positional argument')
+                print("Unexpected extra positional argument")
                 sys.exit(1)
             i += 1
     if input_csv is None:
-        print('Input CSV required.')
+        print("Input CSV required.")
         sys.exit(1)
     return input_csv, output_dir
 

@@ -348,7 +348,7 @@ def analyze_isolated_padlocks(
     missing = required_cols - set(df.columns)
     if missing:
         raise ValueError(f"Missing required columns: {missing}")
-    
+
     if model is None:
         model = Model(material="dna", celsius=45, sodium=0.075, magnesium=0.01)
 

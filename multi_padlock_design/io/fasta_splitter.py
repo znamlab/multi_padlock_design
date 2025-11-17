@@ -100,33 +100,33 @@ def parse_args(argv: List[str]):
     i = 1
     while i < len(argv):
         arg = argv[i]
-        if arg == '--no-list':
+        if arg == "--no-list":
             write_list = False
             i += 1
-        elif arg == '--out':
+        elif arg == "--out":
             if i + 1 >= len(argv):
-                print('--out requires a path')
+                print("--out requires a path")
                 sys.exit(1)
             output_dir = Path(argv[i + 1])
             i += 2
-        elif arg.startswith('-'):
-            print(f'Unknown option: {arg}')
+        elif arg.startswith("-"):
+            print(f"Unknown option: {arg}")
             sys.exit(1)
         else:
             if input_fasta is None:
                 input_fasta = arg
             else:
-                print('Unexpected extra positional argument.')
+                print("Unexpected extra positional argument.")
                 sys.exit(1)
             i += 1
 
     if input_fasta is None:
-        print('Input FASTA required.')
+        print("Input FASTA required.")
         sys.exit(1)
 
     if output_dir is None:
         # Default: directory containing the input FASTA
-        print('Output directory is required')
+        print("Output directory is required")
 
     return input_fasta, output_dir, write_list
 

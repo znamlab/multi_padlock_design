@@ -51,7 +51,7 @@ def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChoppe
             notMappednew.append(tempnomap)
             Tmnew.append(temptm)
 
-        print(f'Not mapped after position correction: {notMappednew}')
+        print(f"Not mapped after position correction: {notMappednew}")
 
     return targetsnew, targetposnew, notMappednew, Tmnew
 
@@ -134,7 +134,7 @@ def selectprobes(n, finals, headers, armlength, outpars):
     print(f"Filtered Regions: {filtered_regions}")
 
     for i, header in enumerate(headers):
-        fullheader = header #keep full header for gene ID
+        fullheader = header  # keep full header for gene ID
         first = header.split()[0]  # take the first token
         header = first.lstrip(">")  # only strip '>' if it exists
         # Compute probe binding end positions for classification
@@ -206,45 +206,52 @@ def selectprobes(n, finals, headers, armlength, outpars):
             else:
                 regions = [None] * len(targetpos[i])
         elif input_type == "csv":
-            #get the ensembl gene symbol
+            # get the ensembl gene symbol
             print(fullheader)
             gene_symbol = get_gene_symbol(fullheader)
             print(f"gene symbol: {gene_symbol}")
-            #find entries in the cds database for this gene symbol
-            cds_headers = str(config.cds_file) + '_headers.txt'
+            # find entries in the cds database for this gene symbol
+            cds_headers = str(config.cds_file) + "_headers.txt"
             print(cds_headers)
-            cds_entries =  find_cds_entries(cds_headers, gene_symbol)
-            print(f'cds entries: {cds_entries}')
-            #Iterate, check if it's in the variant list, if it's not, bad luck, complain. 
-            #define variant list
+            cds_entries = find_cds_entries(cds_headers, gene_symbol)
+            print(f"cds entries: {cds_entries}")
+            # Iterate, check if it's in the variant list, if it's not, bad luck, complain.
+            # define variant list
             variants = find_latest_variants_fasta(tempdir)
             print(variants)
             for cds_variants in cds_entries:
-                variant_id = cds_variants.split()[0].lstrip('>')
+                variant_id = cds_variants.split()[0].lstrip(">")
                 if variant_id in variants:
-                    print(f'Found valid (some annotated cds) variant: {variant_id}')
+                    print(f"Found valid (some annotated cds) variant: {variant_id}")
                     reference_variant = variant_id
                     break
                 else:
-                    print(f'No valid (some annotated cds) variant for: {variant_id}')
-            #map the target to the reference variant sequence
+                    print(f"No valid (some annotated cds) variant for: {variant_id}")
+            # map the target to the reference variant sequence
             reference_variant_sequence = get_cdna(reference_variant)
-            results = [align_to_reference_variant(target_sequence, reference_variant_sequence) for target_sequence in targets[0]]
-            #it's a tuple of (start in ref, length of match, matched sequence)
+            results = [
+                align_to_reference_variant(target_sequence, reference_variant_sequence)
+                for target_sequence in targets[0]
+            ]
+            # it's a tuple of (start in ref, length of match, matched sequence)
             print(results)
-            #map the reference variant cds into the cdna
-            df = find_start_end_sites(config.cds_file, config.cdna_file, reference_variant)
+            # map the reference variant cds into the cdna
+            df = find_start_end_sites(
+                config.cds_file, config.cdna_file, reference_variant
+            )
             print(df)
             if df.empty:
-                print('No CDS found for variant')
-                regions = [None]*len(probes)
+                print("No CDS found for variant")
+                regions = [None] * len(probes)
             else:
                 cds_start = int(df["CDS_start"].values[0])
                 cds_end = int(df["CDS_end"].values[0])
                 for probe in results:
-                    print(probe[0], probe[0]+probe[1], cds_start, cds_end)
+                    print(probe[0], probe[0] + probe[1], cds_start, cds_end)
                     regions.append(
-                        classify_region(probe[0], probe[0]+probe[1], cds_start, cds_end)
+                        classify_region(
+                            probe[0], probe[0] + probe[1], cds_start, cds_end
+                        )
                     )
         print(f"Found Regions: {regions}")
         binding_regions = config.binding_regions
@@ -578,14 +585,17 @@ def classify_region(target_start, target_end, cds_start, cds_end, include_5utr=T
     else:
         return None
 
+
 def align_to_reference_variant(target_sequence, reference_variant_seq):
     # target_sequence = short probe
     # reference_variant_seq = long cDNA
     matcher = SequenceMatcher(None, reference_variant_seq, target_sequence)
-    match = matcher.find_longest_match(0, len(reference_variant_seq),
-                                       0, len(target_sequence))
-    #check that the match fully matches? TODO
-    return match.a, match.size, reference_variant_seq[match.a:match.a + match.size]
+    match = matcher.find_longest_match(
+        0, len(reference_variant_seq), 0, len(target_sequence)
+    )
+    # check that the match fully matches? TODO
+    return match.a, match.size, reference_variant_seq[match.a : match.a + match.size]
+
 
 def get_gene_symbol(header):
     # Split by spaces
@@ -630,7 +640,7 @@ def find_latest_variants_fasta(tempdir):
 
     # Fallback: look for variants.fasta
     pattern = os.path.join(tempdir, "*variants.fasta")
-    plain_files = glob.glob(pattern)  
+    plain_files = glob.glob(pattern)
     try:
         plain_file = plain_files[0]
     except IndexError:
@@ -644,15 +654,17 @@ def find_latest_variants_fasta(tempdir):
             variants = [h.lstrip(">").split()[0] for h in headers]
         return variants
 
+
 def find_cds_entries(cds_headers_file, gene_symbol):
     entries = []
-    with open(cds_headers_file, 'r') as f:
+    with open(cds_headers_file, "r") as f:
         lines = f.readlines()
         cds_headers = [line.strip() for line in lines]
     for header in cds_headers:
         if f"gene:{gene_symbol}" in header:
             entries.append(header)
     return entries
+
 
 def get_cdna(transcript_id):
     """

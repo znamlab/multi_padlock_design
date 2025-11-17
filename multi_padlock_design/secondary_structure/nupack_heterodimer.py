@@ -56,8 +56,7 @@ except ImportError as e:
     ) from e
 
 
-from multi_padlock_design.secondary_structure.check_padlocks import (clean_seq,
-                                                                     slurm_it)
+from multi_padlock_design.secondary_structure.check_padlocks import clean_seq, slurm_it
 
 # ------------------------------- Pair Enumeration -------------------------------
 
@@ -620,7 +619,14 @@ def run_nupack_selected_vs_all_for_probe(
     from tqdm.auto import tqdm  # lazy import in job for progress (optional)
 
     records: List[Dict[str, Any]] = []
-    pbar = tqdm(total=N, desc=f"nupack selected-vs-all i={probe_index}", unit="pair", ascii=True, disable=False, leave=False)
+    pbar = tqdm(
+        total=N,
+        desc=f"nupack selected-vs-all i={probe_index}",
+        unit="pair",
+        ascii=True,
+        disable=False,
+        leave=False,
+    )
     s1 = seqs[probe_index]
     name1 = names[probe_index]
     for j in range(N):
@@ -635,7 +641,9 @@ def run_nupack_selected_vs_all_for_probe(
             model_kwargs=model_kwargs,
             model=model,
         )
-        records.append({"i": probe_index, "j": j, "probe_i": name1, "probe_j": name2, **metrics})
+        records.append(
+            {"i": probe_index, "j": j, "probe_i": name1, "probe_j": name2, **metrics}
+        )
         pbar.update(1)
     pbar.close()
 
@@ -718,7 +726,11 @@ def aggregate_nupack_selected_vs_all(
             name_col = "_autoname"
             df[name_col] = [f"probe_{i}" for i in range(len(df))]
         names = df[name_col].astype(str).tolist()
-        if selected_indices is None and selected_gene_names is not None and gene_col in df.columns:
+        if (
+            selected_indices is None
+            and selected_gene_names is not None
+            and gene_col in df.columns
+        ):
             genes = df[gene_col].astype(str).tolist()
 
     N = len(names)
@@ -756,7 +768,9 @@ def aggregate_nupack_selected_vs_all(
 
     part_files = sorted(out_dir.glob("selected_vs_all_probe_*.pkl"))
     if not part_files:
-        raise FileNotFoundError("No per-probe part files found (selected_vs_all_probe_*.pkl)")
+        raise FileNotFoundError(
+            "No per-probe part files found (selected_vs_all_probe_*.pkl)"
+        )
 
     # Count rows for progress bar
     total_rows = 0
@@ -772,10 +786,18 @@ def aggregate_nupack_selected_vs_all(
     try:
         from tqdm.auto import tqdm
     except ImportError:
+
         def tqdm(x, **k):
             return x
 
-    pbar = tqdm(total=total_rows, desc="aggregate selected-vs-all", unit="pair", ascii=True, disable=False, leave=False)
+    pbar = tqdm(
+        total=total_rows,
+        desc="aggregate selected-vs-all",
+        unit="pair",
+        ascii=True,
+        disable=False,
+        leave=False,
+    )
     for pf in part_files:
         try:
             with pf.open("rb") as f:
@@ -816,17 +838,36 @@ def aggregate_nupack_selected_vs_all(
             percent_matrix[r, i] = 0.0
 
     with open(dg_matrix_pickle, "wb") as f:
-        pickle.dump({"matrix": dg_matrix, "row_names": row_names, "col_names": col_names, "sequence_col": sequence_col}, f)
+        pickle.dump(
+            {
+                "matrix": dg_matrix,
+                "row_names": row_names,
+                "col_names": col_names,
+                "sequence_col": sequence_col,
+            },
+            f,
+        )
     with open(percent_matrix_pickle, "wb") as f:
-        pickle.dump({"matrix": percent_matrix, "row_names": row_names, "col_names": col_names, "sequence_col": sequence_col}, f)
+        pickle.dump(
+            {
+                "matrix": percent_matrix,
+                "row_names": row_names,
+                "col_names": col_names,
+                "sequence_col": sequence_col,
+            },
+            f,
+        )
     with open(combined_pickle, "wb") as f:
-        pickle.dump({
-            "dg_matrix": dg_matrix,
-            "percent_matrix": percent_matrix,
-            "row_names": row_names,
-            "col_names": col_names,
-            "sequence_col": sequence_col,
-        }, f)
+        pickle.dump(
+            {
+                "dg_matrix": dg_matrix,
+                "percent_matrix": percent_matrix,
+                "row_names": row_names,
+                "col_names": col_names,
+                "sequence_col": sequence_col,
+            },
+            f,
+        )
     return str(combined_pickle)
 
 
@@ -863,9 +904,13 @@ def submit_selected_vs_all_jobs(
         raise ValueError(f"Gene column '{gene_col}' not found")
 
     gene_set = set(map(str, target_gene_names))
-    selected_indices = [int(i) for i in df.index[df[gene_col].astype(str).isin(gene_set)]]
+    selected_indices = [
+        int(i) for i in df.index[df[gene_col].astype(str).isin(gene_set)]
+    ]
     if not selected_indices:
-        raise ValueError("No probes match the requested genes for selected-vs-all submission")
+        raise ValueError(
+            "No probes match the requested genes for selected-vs-all submission"
+        )
 
     if dry_run:
         print(f"[DRY RUN] selected M={len(selected_indices)} of N={len(df)}")
@@ -875,7 +920,11 @@ def submit_selected_vs_all_jobs(
     slurm_opts_batch = {"time": time, "mem": mem, "cpus-per-task": cpus_per_task}
     if partition:
         slurm_opts_batch["partition"] = partition
-    slurm_opts_agg = {"time": dependency_aggregate_time, "mem": dependency_aggregate_mem, "cpus-per-task": 1}
+    slurm_opts_agg = {
+        "time": dependency_aggregate_time,
+        "mem": dependency_aggregate_mem,
+        "cpus-per-task": 1,
+    }
     if partition:
         slurm_opts_agg["partition"] = partition
 

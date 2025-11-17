@@ -12,12 +12,12 @@ from multi_padlock_design.io import createoutput
 
 def chopseq(seq, window, step):
     """Moving window to chop target sequence
-    
+
     Args:
         seq (str): sequence
         window (int): window size
         step (int): step size
-    
+
     Returns:
         seqChopped (list): list of chopped sequences
     """
@@ -138,10 +138,10 @@ def runscreen(argin):
             and "CCCCC" not in target
             and "TTTTT" not in target
         ):
-            noHomo_listSeq.append(target) #noHomo
+            noHomo_listSeq.append(target)  # noHomo
         # Otherwise insert None to keep the index consistent
         else:
-            noHomo_listSeq.append(None) 
+            noHomo_listSeq.append(None)
 
     for j, seqChopped in enumerate(noHomo_listSeq):
         tm = calculatetm(seqChopped)
@@ -158,13 +158,13 @@ def runscreen(argin):
 
 def thresholdtm(headers, sequences, dirname, designpars):
     """Parallel process of Tm thresholding for input sequences
-    
+
     Args:
         headers (list): list of headers
         sequences (list): list of sequences
         dirname (str): directory name
         designpars (list): list of design parameters
-    
+
     Returns:
         Tm (list): list of Tm values
         siteChopped (list): list of indices of sequences that fulfill Tm requirement
@@ -174,7 +174,15 @@ def thresholdtm(headers, sequences, dirname, designpars):
     inputs = []
     for c, i in enumerate(headers):
         inputs.append(
-            (dirname, i, sequences[c], designpars[1], designpars[3], designpars[4], designpars[6])
+            (
+                dirname,
+                i,
+                sequences[c],
+                designpars[1],
+                designpars[3],
+                designpars[4],
+                designpars[6],
+            )
         )
     pool = multiprocessing.Pool(6)
 

@@ -4,10 +4,10 @@
 
 def readfasta(fastafile):
     """Read a fasta file and return the headers and sequences.
-    
+
     Args:
         fastafile (str): fasta file name
-    
+
     Returns:
         success (bool): True if the fasta file is read successfully
         headers (list): list of headers

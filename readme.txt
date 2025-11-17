@@ -26,4 +26,3 @@ Tm: lower and upper limit of melting temperatures, in a reaction containig 0.1 u
 
 Fixed parameters:
 For specificity check, in order to say a target sequence is specific enough, it cannot have any sequence in the database with more than 50% of sequence coverage, covering ligation site +- 5 nucleotides, and 80% of homology.
-

@@ -7,13 +7,14 @@ import multi_padlock_design.blast.readblast as readblast
 
 
 def revcomp(seq):
-    complement = str.maketrans('ATCG', 'TAGC')
+    complement = str.maketrans("ATCG", "TAGC")
     return seq.translate(complement)[::-1]
 
-def read_candidates(outdir, panel_name, probefile = "3.AllSpecificTargets_*.csv"):
+
+def read_candidates(outdir, panel_name, probefile="3.AllSpecificTargets_*.csv"):
     """
     Read and concatenate all "3.AllSpecificTargets_*.csv" files from subdirectories of the given panel directory.
-    
+
     Args:
         outdir (Path): Base output directory containing the panel subdirectory.
         panel_name (str): Name of the panel subdirectory.
@@ -24,7 +25,6 @@ def read_candidates(outdir, panel_name, probefile = "3.AllSpecificTargets_*.csv"
     all_dfs = []
     panel_dir = outdir / panel_name
 
-
     # Loop over subdirectories
     for subdir in panel_dir.iterdir():
         if subdir.is_dir():
@@ -32,7 +32,9 @@ def read_candidates(outdir, panel_name, probefile = "3.AllSpecificTargets_*.csv"
 
             # Collect "3.AllSpecificTargets_*.csv"
             target_files = list(subdir.glob(probefile))
-            assert len(target_files) == 1, f"Expected exactly one target file in {subdir}, found {len(target_files)}"
+            assert (
+                len(target_files) == 1
+            ), f"Expected exactly one target file in {subdir}, found {len(target_files)}"
             tf = target_files[0]
 
             # Load and tag with gene name (= subdir name)
@@ -44,7 +46,7 @@ def read_candidates(outdir, panel_name, probefile = "3.AllSpecificTargets_*.csv"
             header, *data = clean_lines
             df = pd.DataFrame(data, columns=header)
             df["gene"] = subdir.name
-            if len(df)<1:
+            if len(df) < 1:
                 print(f"Warning: No targets found in {subdir.name}, skipping.")
                 continue
             all_dfs.append(df)
@@ -54,53 +56,65 @@ def read_candidates(outdir, panel_name, probefile = "3.AllSpecificTargets_*.csv"
 
     return big_df
 
+
 def smart_split(line):
     # split on commas not inside [ ... ]
-    return re.split(r',(?![^[]*\])', line)
+    return re.split(r",(?![^[]*\])", line)
 
 
-def generate_random_dna_sequences(min_barcode, length, num_sequences, for_overlap, genes=None):
+def generate_random_dna_sequences(
+    min_barcode, length, num_sequences, for_overlap, genes=None
+):
     """
     Build the primer-padlock overlapping sequences for SNAIL probes
     """
-    
-    bases = ['A', 'T', 'C', 'G']
+
+    bases = ["A", "T", "C", "G"]
     sequences = []
     reverse_complements = []
     Tms = []
-    
+
     while len(sequences) < num_sequences:
-        sequence = ''.join(random.choice(bases) for _ in range(length))
-        
+        sequence = "".join(random.choice(bases) for _ in range(length))
+
         # Check condition for overlap oligos
-        if for_overlap and sequence[3:6] in ['TAA', 'TCA', 'TGA', 'TTA', 'ATT', 'AGT', 'ACT', "AAT"]:#ligation wont happen when reverse complement is TXA In 6:9 position for overlap
+        if (
+            for_overlap
+            and sequence[3:6]
+            in ["TAA", "TCA", "TGA", "TTA", "ATT", "AGT", "ACT", "AAT"]
+        ):  # ligation wont happen when reverse complement is TXA In 6:9 position for overlap
             continue
-        
-        #No homopolymers
-        if ('AAA' in sequence) or ('TTT' in sequence) or ('CCC' in sequence) or ('GGG' in sequence):
+
+        # No homopolymers
+        if (
+            ("AAA" in sequence)
+            or ("TTT" in sequence)
+            or ("CCC" in sequence)
+            or ("GGG" in sequence)
+        ):
             continue
-            
+
         # check Tm?
         Tm = readblast.calc_tm_NN(sequence)
         if Tm < 25 or Tm > 35:
             continue
-        
-        if all(count_diff(seq[:min_barcode], sequence[:min_barcode]) >= 2 for seq in sequences) and \
-           all(count_diff(seq, sequence) >= 4 for seq in sequences):
+
+        if all(
+            count_diff(seq[:min_barcode], sequence[:min_barcode]) >= 2
+            for seq in sequences
+        ) and all(count_diff(seq, sequence) >= 4 for seq in sequences):
             sequences.append(sequence)
-            complement = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C'}
+            complement = {"A": "T", "T": "A", "C": "G", "G": "C"}
             reverse_seq = sequence[::-1]
-            reverse_complement_seq = ''.join(complement[base] for base in reverse_seq)
+            reverse_complement_seq = "".join(complement[base] for base in reverse_seq)
             reverse_complements.append(reverse_complement_seq)
             Tms.append(Tm)
 
     # Build dataframe
-    df = pd.DataFrame({
-        'Sequence': sequences,
-        'Reverse Complement': reverse_complements, 
-        'Tms': Tms
-    }).drop_duplicates()
-    
+    df = pd.DataFrame(
+        {"Sequence": sequences, "Reverse Complement": reverse_complements, "Tms": Tms}
+    ).drop_duplicates()
+
     # Handle gene names
     if genes is None:
         genes = ["no_gene"] * len(df)
@@ -109,13 +123,13 @@ def generate_random_dna_sequences(min_barcode, length, num_sequences, for_overla
         if len(genes) < len(df):
             genes = genes + ["no_gene"] * (len(df) - len(genes))
         elif len(genes) > len(df):
-            genes = genes[:len(df)]
-    
-    df['Overlap Primer Sequence'] = genes
-    df['ID'] = range(len(df))  # unique IDs
-    
+            genes = genes[: len(df)]
+
+    df["Overlap Primer Sequence"] = genes
+    df["ID"] = range(len(df))  # unique IDs
+
     return df
+
 
 def count_diff(seq1, seq2):
     return sum(base1 != base2 for base1, base2 in zip(seq1, seq2))
-

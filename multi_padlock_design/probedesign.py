@@ -5,10 +5,13 @@ import sys
 import multi_padlock_design.config as config
 from multi_padlock_design.blast import parblast, readblast
 from multi_padlock_design.io import checkinput, createoutput, formatrefseq
-from multi_padlock_design.select_probes import (distributeprobes,
-                                                finalizeprobes, screenseq)
+from multi_padlock_design.select_probes import (
+    distributeprobes,
+    finalizeprobes,
+    screenseq,
+)
 
-MODE = 'STARBARseq' #'STARBARseq' or 'BARseq'
+MODE = "STARBARseq"  #'STARBARseq' or 'BARseq'
 
 
 if __name__ == "__main__":
@@ -25,7 +28,10 @@ if __name__ == "__main__":
 
         # Tm screening
         Tm, siteChopped = screenseq.thresholdtm(
-            designinput[1], designinput[2], outpars[1], designpars #armlen used, but not important, only total length
+            designinput[1],
+            designinput[2],
+            outpars[1],
+            designpars,  # armlen used, but not important, only total length
         )
 
         # Make blast database if it doesn't exist
@@ -41,9 +47,9 @@ if __name__ == "__main__":
             designpars[1],
             designinput[3],
             config.specificity_by_tm,
-            designpars[6] #total length
-        ) #used in readblastout
-        print(f'Not mapped genes after candidate assignment: {notMapped}')
+            designpars[6],  # total length
+        )  # used in readblastout
+        print(f"Not mapped genes after candidate assignment: {notMapped}")
         createoutput.writetargetfile(
             designinput,
             siteCandidates,
@@ -51,7 +57,7 @@ if __name__ == "__main__":
             designpars[1],
             outpars,
             "3.AllSpecificTargets_",
-            designpars[6] #total length
+            designpars[6],  # total length
         )
 
         # non-overlapping candidates
@@ -92,7 +98,7 @@ if __name__ == "__main__":
             finallist[1],
             finallist[2],
             finallist[3],
-            outpars, 
+            outpars,
             designpars[1],
             "5.ProbesDBMappable_",
         )
