@@ -548,8 +548,394 @@ def submit_exhaustive_heterodimer_jobs(
     return batch_job_ids, aggregate_job_id
 
 
+# -------------------------------- Selected-vs-All (Per-Probe) ---------------------------------
+
+
+@slurm_it(
+    conda_env="multi-padlock-design",
+    from_imports={"lib.nupack_heterodimer": "run_nupack_selected_vs_all_for_probe"},
+)
+def run_nupack_selected_vs_all_for_probe(
+    probe_df_path: str,
+    output_dir: str,
+    probe_index: int,
+    sequence_col: str = "padlock",
+    name_col: Optional[str] = None,
+    padlock_conc: float = 1e-9,
+    overwrite: bool = False,
+    use_seq_cache: bool = True,
+    seq_cache_name: str = "probe_sequences_cache.pkl",
+) -> str:
+    """Compute NUPACK heterodimer metrics for one selected probe vs all probes.
+
+    Writes a part file with rows for j in [0..N-1] and columns:
+      i, j, probe_i, probe_j, heterodimer_dG, heterodimer_M, heterodimer_fraction, heterodimer_percent
+    """
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_file = out_dir / f"selected_vs_all_probe_{probe_index:06d}.pkl"
+    if out_file.exists() and not overwrite:
+        return str(out_file)
+
+    probe_df_path = Path(probe_df_path)
+    cache_file = out_dir / seq_cache_name
+
+    # Load cached seqs/names when available
+    seqs: List[str]
+    names: List[str]
+    loaded_from_cache = False
+    if use_seq_cache and cache_file.exists():
+        try:
+            with cache_file.open("rb") as f:
+                cache_obj = pickle.load(f)
+            seqs = cache_obj["seqs"]
+            names = cache_obj["names"]
+            loaded_from_cache = True
+        except Exception:
+            loaded_from_cache = False
+
+    if not loaded_from_cache:
+        if probe_df_path.suffix.lower() in {".pkl", ".pickle"}:
+            df = pd.read_pickle(probe_df_path)
+        else:
+            df = pd.read_csv(probe_df_path)
+        if sequence_col not in df.columns:
+            raise ValueError(f"Sequence column '{sequence_col}' not found")
+        if name_col is None:
+            for cand in ["name", "probe_name", "id", "gene", "padlock_name"]:
+                if cand in df.columns:
+                    name_col = cand
+                    break
+        if name_col is None:
+            name_col = "_autoname"
+            df = df.copy()
+            df[name_col] = [f"probe_{i}" for i in range(len(df))]
+        seqs = df[sequence_col].map(clean_seq).tolist()
+        names = df[name_col].astype(str).tolist()
+        if use_seq_cache:
+            tmp_file = cache_file.with_suffix(".tmp")
+            try:
+                with tmp_file.open("wb") as f:
+                    pickle.dump(
+                        {"seqs": seqs, "names": names, "sequence_col": sequence_col}, f
+                    )
+                os.replace(tmp_file, cache_file)
+            except Exception:
+                if tmp_file.exists():
+                    try:
+                        tmp_file.unlink()
+                    except Exception:
+                        pass
+
+    N = len(seqs)
+    if not (0 <= probe_index < N):
+        raise IndexError(f"probe_index {probe_index} out of range for N={N}")
+
+    model_kwargs = dict(material="dna", celsius=45, sodium=0.075, magnesium=0.01)
+    model = Model(**model_kwargs)
+
+    from tqdm.auto import tqdm  # lazy import in job for progress (optional)
+
+    records: List[Dict[str, Any]] = []
+    pbar = tqdm(total=N, desc=f"nupack selected-vs-all i={probe_index}", unit="pair", ascii=True, disable=False, leave=False)
+    s1 = seqs[probe_index]
+    name1 = names[probe_index]
+    for j in range(N):
+        s2 = seqs[j]
+        name2 = names[j]
+        metrics = _compute_pair_nupack(
+            s1=s1,
+            s2=s2,
+            name1=name1,
+            name2=name2,
+            padlock_conc=padlock_conc,
+            model_kwargs=model_kwargs,
+            model=model,
+        )
+        records.append({"i": probe_index, "j": j, "probe_i": name1, "probe_j": name2, **metrics})
+        pbar.update(1)
+    pbar.close()
+
+    part_df = pd.DataFrame(records)
+    with out_file.open("wb") as f:
+        pickle.dump(part_df, f)
+    return str(out_file)
+
+
+@slurm_it(
+    conda_env="multi-padlock-design",
+    from_imports={"lib.nupack_heterodimer": "aggregate_nupack_selected_vs_all"},
+)
+def aggregate_nupack_selected_vs_all(
+    output_dir: str,
+    probe_df_path: str,
+    sequence_col: str = "padlock",
+    selected_indices: Optional[List[int]] = None,
+    selected_gene_names: Optional[List[str]] = None,
+    gene_col: str = "gene_name",
+    dg_matrix_pickle: Optional[str] = None,
+    percent_matrix_pickle: Optional[str] = None,
+    combined_pickle: Optional[str] = None,
+    overwrite: bool = True,
+    use_seq_cache: bool = True,
+    seq_cache_name: str = "probe_sequences_cache.pkl",
+) -> str:
+    """Aggregate per-probe selected-vs-all part files into row-subset vs all matrices.
+
+    Rows correspond to the selected subset; columns correspond to all probes.
+    """
+    out_dir = Path(output_dir)
+    if dg_matrix_pickle is None:
+        dg_matrix_pickle = out_dir / "selected_vs_all_dg_matrix.pkl"
+    else:
+        dg_matrix_pickle = Path(dg_matrix_pickle)
+    if percent_matrix_pickle is None:
+        percent_matrix_pickle = out_dir / "selected_vs_all_percent_matrix.pkl"
+    else:
+        percent_matrix_pickle = Path(percent_matrix_pickle)
+    if combined_pickle is None:
+        combined_pickle = out_dir / "selected_vs_all_results.pkl"
+    else:
+        combined_pickle = Path(combined_pickle)
+
+    if (
+        dg_matrix_pickle.exists()
+        and percent_matrix_pickle.exists()
+        and combined_pickle.exists()
+        and not overwrite
+    ):
+        return str(combined_pickle)
+
+    probe_df_path = Path(probe_df_path)
+    cache_file = out_dir / seq_cache_name
+    names: Optional[List[str]] = None
+    genes: Optional[List[str]] = None
+    if use_seq_cache and cache_file.exists():
+        try:
+            with cache_file.open("rb") as f:
+                cache_obj = pickle.load(f)
+            if cache_obj.get("sequence_col") == sequence_col:
+                names = cache_obj["names"]
+        except Exception:
+            names = None
+
+    if names is None:
+        if probe_df_path.suffix.lower() in {".pkl", ".pickle"}:
+            df = pd.read_pickle(probe_df_path)
+        else:
+            df = pd.read_csv(probe_df_path)
+        if sequence_col not in df.columns:
+            raise ValueError(f"Sequence column '{sequence_col}' not found")
+        name_col = None
+        for c in ["name", "probe_name", "id", "gene", "padlock_name", "_autoname"]:
+            if c in df.columns:
+                name_col = c
+                break
+        if name_col is None:
+            name_col = "_autoname"
+            df[name_col] = [f"probe_{i}" for i in range(len(df))]
+        names = df[name_col].astype(str).tolist()
+        if selected_indices is None and selected_gene_names is not None and gene_col in df.columns:
+            genes = df[gene_col].astype(str).tolist()
+
+    N = len(names)
+
+    # Determine selected indices if not given
+    if selected_indices is None:
+        if selected_gene_names is None:
+            raise ValueError("Provide either selected_indices or selected_gene_names")
+        if genes is None:
+            if probe_df_path.suffix.lower() in {".pkl", ".pickle"}:
+                df = pd.read_pickle(probe_df_path)
+            else:
+                df = pd.read_csv(probe_df_path)
+            if gene_col not in df.columns:
+                raise ValueError(f"Gene column '{gene_col}' not found")
+            genes_series = df[gene_col].astype(str)
+        else:
+            genes_series = pd.Series(genes)
+        gene_set = set(map(str, selected_gene_names))
+        selected_indices = [i for i, g in enumerate(genes_series) if g in gene_set]
+
+    selected_indices = list(sorted(set(selected_indices)))
+    M = len(selected_indices)
+    if M == 0:
+        raise ValueError("No selected probes for aggregation")
+
+    row_names = [names[i] for i in selected_indices]
+    col_names = names
+
+    dg_matrix = np.full((M, N), np.nan, dtype=float)
+    percent_matrix = np.full((M, N), np.nan, dtype=float)
+
+    # Map selected index to row position
+    row_pos = {idx: r for r, idx in enumerate(selected_indices)}
+
+    part_files = sorted(out_dir.glob("selected_vs_all_probe_*.pkl"))
+    if not part_files:
+        raise FileNotFoundError("No per-probe part files found (selected_vs_all_probe_*.pkl)")
+
+    # Count rows for progress bar
+    total_rows = 0
+    for pf in part_files:
+        try:
+            with pf.open("rb") as f:
+                part_df = pickle.load(f)
+        except Exception:
+            continue
+        if isinstance(part_df, pd.DataFrame):
+            total_rows += len(part_df)
+
+    try:
+        from tqdm.auto import tqdm
+    except ImportError:
+        def tqdm(x, **k):
+            return x
+
+    pbar = tqdm(total=total_rows, desc="aggregate selected-vs-all", unit="pair", ascii=True, disable=False, leave=False)
+    for pf in part_files:
+        try:
+            with pf.open("rb") as f:
+                part_df = pickle.load(f)
+        except Exception:
+            continue
+        if not isinstance(part_df, pd.DataFrame):
+            continue
+        # Each part file is a single i vs all j
+        # Fill only when i belongs to selected set
+        if "i" not in part_df.columns or "j" not in part_df.columns:
+            continue
+        i_values = part_df["i"].unique()
+        if len(i_values) != 1:
+            # Unexpected, but handle first value
+            i_val = int(i_values[0])
+        else:
+            i_val = int(i_values[0])
+        if i_val not in row_pos:
+            pbar.update(len(part_df))
+            continue
+        r = row_pos[i_val]
+        for row in part_df.itertuples():
+            j = int(row.j)
+            dg = getattr(row, "heterodimer_dG", math.nan)
+            pct = getattr(row, "heterodimer_percent", math.nan)
+            if 0 <= j < N:
+                dg_matrix[r, j] = dg
+                percent_matrix[r, j] = pct
+            pbar.update(1)
+    pbar.close()
+
+    # Set diagonals (selected i where j==i) to 0.0 as convention
+    for i in selected_indices:
+        r = row_pos.get(i)
+        if r is not None and 0 <= i < N:
+            dg_matrix[r, i] = 0.0
+            percent_matrix[r, i] = 0.0
+
+    with open(dg_matrix_pickle, "wb") as f:
+        pickle.dump({"matrix": dg_matrix, "row_names": row_names, "col_names": col_names, "sequence_col": sequence_col}, f)
+    with open(percent_matrix_pickle, "wb") as f:
+        pickle.dump({"matrix": percent_matrix, "row_names": row_names, "col_names": col_names, "sequence_col": sequence_col}, f)
+    with open(combined_pickle, "wb") as f:
+        pickle.dump({
+            "dg_matrix": dg_matrix,
+            "percent_matrix": percent_matrix,
+            "row_names": row_names,
+            "col_names": col_names,
+            "sequence_col": sequence_col,
+        }, f)
+    return str(combined_pickle)
+
+
+def submit_selected_vs_all_jobs(
+    probe_df_path: str,
+    output_dir: str,
+    slurm_folder: str,
+    target_gene_names: List[str],
+    gene_col: str = "gene_name",
+    time: str = "12:00:00",
+    mem: str = "8G",
+    partition: Optional[str] = "ncpu",
+    cpus_per_task: int = 1,
+    sequence_col: str = "padlock",
+    padlock_conc: float = 1e-9,
+    dependency_aggregate_time: str = "01:00:00",
+    dependency_aggregate_mem: str = "16G",
+    dry_run: bool = False,
+    use_seq_cache: bool = True,
+    seq_cache_name: str = "probe_sequences_cache.pkl",
+) -> tuple[list[str], Optional[str]]:
+    """Submit one job per selected probe (selected-vs-all) plus dependent aggregator job.
+
+    Returns the list of batch job IDs and the aggregator job ID.
+    """
+    probe_df_path_p = Path(probe_df_path)
+    if probe_df_path_p.suffix.lower() in {".pkl", ".pickle"}:
+        df = pd.read_pickle(probe_df_path_p)
+    else:
+        df = pd.read_csv(probe_df_path_p)
+    if sequence_col not in df.columns:
+        raise ValueError(f"Sequence column '{sequence_col}' not found")
+    if gene_col not in df.columns:
+        raise ValueError(f"Gene column '{gene_col}' not found")
+
+    gene_set = set(map(str, target_gene_names))
+    selected_indices = [int(i) for i in df.index[df[gene_col].astype(str).isin(gene_set)]]
+    if not selected_indices:
+        raise ValueError("No probes match the requested genes for selected-vs-all submission")
+
+    if dry_run:
+        print(f"[DRY RUN] selected M={len(selected_indices)} of N={len(df)}")
+        return [], None
+
+    # Slurm options
+    slurm_opts_batch = {"time": time, "mem": mem, "cpus-per-task": cpus_per_task}
+    if partition:
+        slurm_opts_batch["partition"] = partition
+    slurm_opts_agg = {"time": dependency_aggregate_time, "mem": dependency_aggregate_mem, "cpus-per-task": 1}
+    if partition:
+        slurm_opts_agg["partition"] = partition
+
+    batch_job_ids: list[str] = []
+    for idx in selected_indices:
+        jid = run_nupack_selected_vs_all_for_probe(
+            probe_df_path=str(probe_df_path_p),
+            output_dir=str(output_dir),
+            probe_index=idx,
+            sequence_col=sequence_col,
+            padlock_conc=padlock_conc,
+            slurm_folder=slurm_folder,
+            scripts_name=f"selected_vs_all_probe_{idx:06d}",
+            slurm_options=slurm_opts_batch,
+            use_slurm=True,
+            use_seq_cache=use_seq_cache,
+            seq_cache_name=seq_cache_name,
+        )
+        batch_job_ids.append(jid)
+
+    aggregate_job_id = aggregate_nupack_selected_vs_all(
+        output_dir=str(output_dir),
+        probe_df_path=str(probe_df_path_p),
+        sequence_col=sequence_col,
+        selected_indices=selected_indices,
+        selected_gene_names=list(gene_set),
+        gene_col=gene_col,
+        slurm_folder=slurm_folder,
+        scripts_name="selected_vs_all_aggregate",
+        job_dependency=batch_job_ids,
+        slurm_options=slurm_opts_agg,
+        use_slurm=True,
+        use_seq_cache=use_seq_cache,
+        seq_cache_name=seq_cache_name,
+    )
+    return batch_job_ids, aggregate_job_id
+
+
 __all__ = [
     "submit_exhaustive_heterodimer_jobs",
     "run_nupack_heterodimer_batch",
     "aggregate_nupack_heterodimer_results",
+    "run_nupack_selected_vs_all_for_probe",
+    "aggregate_nupack_selected_vs_all",
+    "submit_selected_vs_all_jobs",
 ]
