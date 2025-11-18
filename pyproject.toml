@@ -40,6 +40,9 @@ dev = [
   "setuptools_scm",
 ]
 
+[project.scripts]
+mpd-download-databases = "multi_padlock_design.io.DownloadFromFTP:main"
+
 [tool.pytest.ini_options]
 addopts = "--cov=multi_padlock_design"
 
