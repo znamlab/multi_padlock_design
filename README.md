@@ -9,7 +9,7 @@ First clone the repository and install it with with conda (this will automatical
 
 ```bash
 git clone git@github.com:znamlab/multi_padlock_design.git
-cd multi-padlock-design
+cd multi_padlock_design
 conda env create -f environment.yml
 ```
 Then, activate the new environment:
@@ -35,6 +35,8 @@ If you want to select a different version of your refseq/ensembl database or use
 - You need all files from mRNA_Prot ending with .rna.fna.gz
 - Download Ensembl mouse/human CDS and cDNA sequences from `https://ftp.ensembl.org/pub/release-115/fasta/`
 - You need the files ending in .all.fa.gz from the cds and cdna subfolders
+- If using Ensembl, also download the gencode annotations from https://ftp.ebi.ac.uk/pub/databases/gencode/
+- You need the gencode.v*.basic.annotation.gtf.gz file from the respective species' latest release
 - Unzip all the .gz files
 - Place these files into subfolders called `refseq` and `ensembl`
 
