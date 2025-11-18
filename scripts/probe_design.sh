@@ -35,9 +35,9 @@ else
 fi
 
 eval "$(/camp/apps/eb/software/Anaconda3/2024.10-1/bin/conda shell.bash hook)"
-conda activate iss-preprocess
+conda activate multi_padlock_design
 
-cd /nemo/lab/znamenskiyp/home/users/becalia/code/multi_padlock_design
+cd /nemo/lab/znamenskiyp/home/users/becalia/code/new/multi_padlock_design
 
 FILE_PATH="$INPUT"                              # already absolute
 FILE_BASE="$(basename "$FILE_PATH")"
@@ -54,6 +54,7 @@ which python
 # Common parameters
 SPECIES="mouse"
 ARM_LEN="20"
+TOTAL_LEN="40"
 INTERVAL="5"
 TM_LOW="60"
 TM_HIGH="78"
@@ -61,23 +62,27 @@ N_PROBES="20"
 
 # Feed probedesign.py prompts
 if [[ "${INPUT_TYPE,,}" == "csv" ]]; then
-  python probedesign.py <<- ENDOF
+  python multi_padlock_design/probedesign.py <<- ENDOF
 ${OUT_DIR}
 ${SPECIES}
+${INPUT_TYPE,,}
 ${FILE_PATH}
 ${ARM_LEN}
+${TOTAL_LEN}
 ${INTERVAL}
 ${TM_LOW}
 ${TM_HIGH}
 ${N_PROBES}
 ENDOF
 elif [[ "${INPUT_TYPE,,}" == "fasta" ]]; then
-  python probedesign.py <<- ENDOF
+  python multi_padlock_design/probedesign.py <<- ENDOF
 ${OUT_DIR}
 ${SPECIES}
+${INPUT_TYPE,,}
 
 ${FILE_PATH}
 ${ARM_LEN}
+${TOTAL_LEN}
 ${INTERVAL}
 ${TM_LOW}
 ${TM_HIGH}

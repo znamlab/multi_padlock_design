@@ -16,12 +16,25 @@ if [[ $# -lt 1 ]]; then
   exit 1
 fi
 
+if command -v ml &>/dev/null; then
+  ml purge
+  ml Anaconda3
+else
+  echo "Module system is not available on node: $CURRENT_NODE"
+fi
+
+eval "$(/camp/apps/eb/software/Anaconda3/2024.10-1/bin/conda shell.bash hook)"
+conda activate multi_padlock_design
+
 # Determine repository root (prefer git, fallback to this script's directory)
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PARENT_DIR="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 if repo_root=$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null); then
   :
+elif repo_root=$(git -C "$PARENT_DIR" rev-parse --show-toplevel 2>/dev/null); then
+  :
 else
-  repo_root="$SCRIPT_DIR"
+  repo_root="$PARENT_DIR"
 fi
 
 # Ensure we run from repo root so Python can import local config
@@ -53,18 +66,19 @@ case "$ext_lower" in
     ;;
 esac
 
+echo "Preparing to split input file for processing"
 # Split input into per-item files in scratch
 if [[ "$input_type" == "fasta" ]]; then
-  python "${repo_root}/other_scripts/fasta_splitter.py" "$input_file"
+  python "${repo_root}/multi_padlock_design/io/fasta_splitter.py" "$input_file"
 else
-  python "${repo_root}/other_scripts/csv_splitter.py" "$input_file"
+  python "${repo_root}/multi_padlock_design/io/csv_splitter.py" "$input_file"
 fi
 
 # Compute output directory based on Python config.split_input and input stem
 out_dir="$(python - "$input_file" <<'PY'
 from pathlib import Path
 import sys
-import config
+from multi_padlock_design import config
 inp = Path(sys.argv[1])
 print((config.split_input / inp.stem).resolve())
 PY
@@ -90,9 +104,11 @@ fi
 
 for src in "${files[@]}"; do
   base_noext="$(basename "${src%.*}")"
+  echo "${parent_base}"
+  echo "${base_noext}"
   echo "Starting job ${src}"
   sbatch \
     --export=INPUT="$src",PARENT="$parent_base",INPUT_TYPE="$input_type" \
   --output="${logdir}/${parent_base}_${base_noext}.out" \
-  "${repo_root}/probe_design.sh"
+  "${repo_root}/scripts/probe_design.sh"
 done

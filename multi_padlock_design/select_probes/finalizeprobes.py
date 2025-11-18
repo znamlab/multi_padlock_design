@@ -143,7 +143,8 @@ def selectprobes(n, finals, headers, armlength, outpars):
         regions = []
 
         # use config.annotation_file (cds/utr3) instead of Ensembl cds/cdna files
-        if config.annotation_file:
+        # Use getattr to avoid AttributeError if annotation_file is not set on config
+        if getattr(config, "annotation_file", None):
             anno_df = pd.read_csv(config.annotation_file)
             row = None
             if anno_df is not None and len(targetpos[i]) > 0:

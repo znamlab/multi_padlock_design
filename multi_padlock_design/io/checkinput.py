@@ -192,13 +192,27 @@ def getdesigninput():
 
     # if species in (["human", "mouse"]):
     # when human or mouse, possible to load only gene list
+
+    while not success_type:
+        input_type = input(
+            "Is your input file a .csv gene list "
+            "or a fasta file containing one or more sequences? "
+            "(type 'csv' or 'fasta'): "
+        ).lower()
+        if input_type in ["csv", "fasta"]:
+            success_type = True
+        else:
+            print("Please type 'csv' or 'fasta'")
+
     while not success_g:
         genefile = input(
-            "File containing gene acronyms "
-            "(text/csv file with one gene per row, or with linker sequences).\n"
-            "Just press Enter if input sequences can be provided:\n"
+            "If providing a .csv file containing gene acronyms "
+            "(text/csv file with one gene per row, or with linker sequences) \n"
+            "Enter the file path: \n"
+            "Else, press Enter if you have fasta input sequences.\n"
         )
         if len(genefile):
+            print(f"Reading gene list from {genefile}")
             genefile = correctinput(genefile)
             success_g, allgenes, alllinkers = readgenefile(genefile)
             # remove gene name duplicates
@@ -208,6 +222,8 @@ def getdesigninput():
                 if name not in genes:
                     genes.append(name)
                     linkers.append(alllinkers[c])
+            unique_genes_count = len(genes)
+            print(f"Found {unique_genes_count} unique gene(s)")
             # genes = list(set(genes))
         else:
             success_g = True
@@ -219,11 +235,11 @@ def getdesigninput():
                 headers_wpos,
                 basepos,
             ) = readseqfile()
-            print(success_f)
             toavoid = [":", "/", "\\", "[", "]", "?", '"', " ", "<", ">"]
             genes = []
             linkers = []
             variants = []
+            print(f"Read {len(headers)} sequences from {seqfile}")
             print(f"Headers: {headers}")
             for header in headers:
                 for i in toavoid:
@@ -291,10 +307,10 @@ def getdesigninput():
     #     success_f, seqfile, headers, headers_wpos, sequences = readseqfile()
     #     basepos = []
     #     linkers = []
-    print(success_f)
 
     while not success_a:
         armlen = input("Length of one padlock arm (nt): ")
+        print(f"Received arm length input: {armlen}")
         success_a = armlength(int(armlen))
 
     while not success_l:
@@ -306,6 +322,7 @@ def getdesigninput():
     while not success_i:
         interval = input("The minimum number of nucleotides between targets: ")
         success_i = spacing(int(interval))
+        print(f"Received interval input: {interval}")
 
     while not success_t:
         t1 = input(
@@ -323,6 +340,7 @@ def getdesigninput():
                     "20 percent formamide): "
                 )
                 success_t = tmthreshold(int(t2), int(t1))
+                print(f"Received Tm threshold inputs: {t1}, {t2}")
 
     while not success_n:
         n = input("Number of probes per gene (skip by pressing Enter): ")
@@ -330,6 +348,7 @@ def getdesigninput():
             success_n = nprobes(int(n))
         else:
             success_n = True
+        print(f"Received number of probes per gene input: {n}")
 
     # find hits if no target sequence is given
     if not success_f:
@@ -424,14 +443,6 @@ def getdesigninput():
         )
         headers_wpos = temp[1]
         sequences = temp[2]
-    while not success_type:
-        input_type = input(
-            "Is the input a gene list or a fasta file? (type 'csv' or 'fasta'): "
-        ).lower()
-        if input_type in ["csv", "fasta"]:
-            success_type = True
-        else:
-            print("Please type 'csv' or 'fasta'")
 
     # write an overview log file
     with open(
