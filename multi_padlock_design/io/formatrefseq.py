@@ -17,7 +17,7 @@ def _open_text(path: str):
     return gzip.open(path, "rt") if path.endswith(".gz") else open(path, "r")
 
 
-def _iter_fasta(paths: Iterable[str]):
+def iter_fasta(paths: Iterable[str]):
     """Yield (header, seq) from one or many FASTA files (handles multiline seqs)."""
     header = None
     seq_chunks = []
@@ -143,7 +143,7 @@ def fastadb(
     sel_seqs: List[str] = []
     acronyms: List[str] = []
 
-    for hdr, seq in _iter_fasta(paths):
+    for hdr, seq in iter_fasta(paths):
         all_headers.append(hdr)
         all_seqs.append(seq)
         if _keep_record(hdr, source, keep_nm_nr_only):
@@ -190,7 +190,7 @@ def fastadb(
 # ---------------------------
 
 
-def blastdb(species: str = "mouse", dbtype: str = "nucl"):
+def blastdb(species: str, dbtype: str = "nucl"):
     """Create a BLAST database from a single FASTA file."""
     fasta_path = config.blast_db_file
     if not os.path.isfile(fasta_path):
@@ -238,7 +238,8 @@ def blastdb(species: str = "mouse", dbtype: str = "nucl"):
                 fastadb(fastadir, files, species)
         except Exception as e:
             print(f"Failed to prepare FASTA for BLAST: {e}")
-            return
+            raise
+        # return
 
     try:
         # Use the transcriptome directory for BLAST outputs
@@ -259,7 +260,8 @@ def blastdb(species: str = "mouse", dbtype: str = "nucl"):
                     dbtype,
                     "-out",
                     out_prefix,
-                    # "-title", f'"{species}_transcriptome"',
+                    "-title",
+                    f'"{species}_transcriptome"',
                 ],
                 check=True,
             )

@@ -7,7 +7,12 @@ from pathlib import Path
 import pandas as pd
 
 import multi_padlock_design.config as config
-from multi_padlock_design.io import createoutput, readfastafile, retrieveseq
+from multi_padlock_design.io import (
+    createoutput,
+    formatrefseq,
+    readfastafile,
+    retrieveseq,
+)
 from multi_padlock_design.io.gene_utils import get_gene_synonyms
 
 Acronyms = []
@@ -349,7 +354,8 @@ def getdesigninput():
         else:
             success_n = True
         print(f"Received number of probes per gene input: {n}")
-
+    print(f"Species: {species}")
+    formatrefseq.blastdb(species)
     # find hits if no target sequence is given
     if not success_f:
         # find genes in the database
