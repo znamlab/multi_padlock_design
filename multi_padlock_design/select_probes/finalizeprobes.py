@@ -12,6 +12,7 @@ import pandas as pd
 from Bio import SeqIO
 
 import multi_padlock_design.config as config
+from multi_padlock_design.io import formatrefseq
 from multi_padlock_design.select_probes.screenseq import chopseq
 
 
@@ -51,7 +52,11 @@ def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChoppe
             notMappednew.append(tempnomap)
             Tmnew.append(temptm)
 
-        print(f"Not mapped after position correction: {notMappednew}")
+        # cast any numpy scalars to plain ints for prettier printing
+        non_numpyint_not_mapped = [
+            [int(x) for x in sublist] for sublist in notMappednew
+        ]
+        print(f"Not mapped after position correction: {non_numpyint_not_mapped}")
 
     return targetsnew, targetposnew, notMappednew, Tmnew
 
@@ -216,8 +221,24 @@ def selectprobes(n, finals, headers, armlength, outpars):
             gene_symbol = get_gene_symbol(fullheader)
             print(f"gene symbol: {gene_symbol}")
             # find entries in the cds database for this gene symbol
-            cds_headers = str(config.cds_file) + "_headers.txt"
-            print(cds_headers)
+            cds_headers = str(
+                os.path.join(
+                    config.BASE_DIR,
+                    config.reference_transcriptome,
+                    f"{config.species}.cdsheaders.txt",
+                )
+            )
+            if not os.path.exists(cds_headers):
+                print(f"CDS headers file not found: {cds_headers}")
+                all_headers = []
+                print("Building CDS headers file...")
+                for hdr, _ in formatrefseq.iter_fasta([config.cds_file]):
+                    all_headers.append(hdr)
+                with open(cds_headers, "w") as f:
+                    for a in all_headers:
+                        f.write(a + "\n")
+                print("CDS headers file built.")
+
             cds_entries = find_cds_entries(cds_headers, gene_symbol)
             print(f"cds entries: {cds_entries}")
             # Iterate, check if it's in the variant list,
