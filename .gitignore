@@ -14,3 +14,4 @@ config.py
 *.aln
 /ensembl
 /*.egg-info/
+*.out
