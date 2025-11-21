@@ -53,16 +53,24 @@ If you want to select a different version of your refseq/ensembl database or use
 - Set the maximum number of parallel threads for multiple sequence alignment (MSA) and BLAST searches in `config.py`.
 - You should also select your reference transcriptome of choice. Ensembl is required if you want to design probes against non CDS regions and blast all probes against these regions for off-target searching.
 
-## Usage
-If using SLURM:
-
-If running locally:
-
 ## Supported Input Files
 1. CSV file containing gene acronyms with the corresponding linker and barcode sequences, one gene per row, no header.
 2. FASTA file containing target sequences, each with their own FASTA header.
 
+## Usage
+If you have access to a SLURM managed HPC cluster, you can create a single job per gene which will run in parallel (recommended for large gene lists):
+- Create your CSV or FASTA file as described above. Then run the command:
+```
+slurm-probe-design <input_file_path>
+```
+If running locally:
+- Create your CSV or FASTA file as described above. Then run the command:
+```
+probe-design <input_file_path>
+```
+
 ## Adjustable Parameters
+These parameters can be specified at run time if running locally, or can be set for all jobs on SLURM by editing the `multi_padlock_design/config.py` file.
 - **Species**: Reference database used for specificity checks and for resolving gene acronyms when FASTA inputs are absent.
 - **Padlock arm length**: Length of each target arm (final target sequence length is twice this value).
 - **Tm range**: Lower and upper melting temperature bounds, assuming 0.1 µM probe, 0.075 M monovalent salt, 0.01 M bivalent salt, and 20% formamide.
