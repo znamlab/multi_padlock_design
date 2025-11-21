@@ -42,6 +42,7 @@ dev = [
 
 [project.scripts]
 mpd-download-databases = "multi_padlock_design.io.DownloadFromFTP:main"
+slurm-probe-design = "multi_padlock_design.cli.probe_design_parallel:main"
 
 [tool.pytest.ini_options]
 addopts = "--cov=multi_padlock_design"
