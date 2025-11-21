@@ -13,3 +13,5 @@ config.py
 *.dnd
 *.aln
 /ensembl
+/*.egg-info/
+*.out

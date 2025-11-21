@@ -1,0 +1,9 @@
+include *.txt
+include *.yml
+include *.yaml
+recursive-include examples *.csv
+recursive-include examples *.fasta
+recursive-include examples *.txt
+recursive-include multi_padlock_design *.py
+recursive-include notebooks *.ipynb
+recursive-include scripts *.sh
