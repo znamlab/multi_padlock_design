@@ -2,6 +2,7 @@
 # per target in cDNA-based expression profiling
 # Xiaoyan, 2017
 import sys
+import traceback
 
 import multi_padlock_design.config as config
 from multi_padlock_design.blast import parblast, readblast
@@ -15,7 +16,9 @@ from multi_padlock_design.select_probes import (
 MODE = "STARBARseq"  #'STARBARseq' or 'BARseq'
 
 
-if __name__ == "__main__":
+def main() -> int:
+    """Run the interactive probe design pipeline."""
+
     try:
         # get keyboard inputs and prepare sequences
 
@@ -25,6 +28,7 @@ if __name__ == "__main__":
         # genepars : (genes, linkers, headers, variants)
         # designinput : (basepos, headers_wpos, sequences, variants_matching_sequence)
 
+        # get keyboard inputs and prepare sequences
         designpars, outpars, genepars, designinput = checkinput.getdesigninput()
         # fmt = checkinput.checkformat(genepars[2])
 
@@ -125,13 +129,18 @@ if __name__ == "__main__":
             )
 
         print("All finished!")
+        return 0
 
     except Exception:
         print(sys.exc_info()[0])
-        import traceback
-
         print(traceback.format_exc())
+        return 1
+
     finally:
         if sys.stdin is not None and sys.stdin.isatty():
             print("Press Enter to continue ...")
             input()
+
+
+if __name__ == "__main__":
+    sys.exit(main())
