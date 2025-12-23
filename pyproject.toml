@@ -1,5 +1,5 @@
 [project]
-name = "multi_padlock_design"
+name = "multi-padlock-design"
 authors = [{name = "Alexander Becalick", email= "alexander.becalick@crick.ac.uk"}]
 description = "Common utility functions for analysis"
 readme = "README.md"
@@ -10,6 +10,7 @@ dependencies = [
     "numpy",
     "pandas",
     "tqdm",
+    "natsort",
     "znamutils @ git+ssh://git@github.com/znamlab/znamutils.git",
 ]
 
