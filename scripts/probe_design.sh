@@ -42,7 +42,7 @@ else
 fi
 
 eval "$(/camp/apps/eb/software/Anaconda3/2024.10-1/bin/conda shell.bash hook)"
-conda activate multi_padlock_design
+conda activate multi-padlock-design
 
 repo_root="$(python - <<'PY'
 from multi_padlock_design import config
