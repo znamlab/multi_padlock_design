@@ -1,0 +1,43 @@
+# Configuring https://pre-commit.ci/
+ci:
+    autoupdate_schedule: monthly
+
+exclude: "conf.py"
+
+repos:
+    - repo: https://github.com/pre-commit/pre-commit-hooks
+      rev: v5.0.0
+      hooks:
+          - id: check-docstring-first
+          - id: check-executables-have-shebangs
+          - id: check-merge-conflict
+          - id: end-of-file-fixer
+          - id: mixed-line-ending
+            args: [--fix=lf]
+          - id: requirements-txt-fixer
+          - id: trailing-whitespace
+    - repo: https://github.com/astral-sh/ruff-pre-commit
+      rev: v0.7.2
+      hooks:
+        - id: ruff
+          args: [ --config=pyproject.toml ]
+        - id: ruff-format
+          args: [ --config=pyproject.toml ]
+    - repo: https://github.com/mgedmin/check-manifest
+      rev: "0.49"
+      hooks:
+          - id: check-manifest
+            args: [--no-build-isolation]
+            additional_dependencies: [setuptools-scm, wheel]
+    - repo: https://github.com/codespell-project/codespell
+      # Configuration for codespell is in pyproject.toml
+      rev: v2.3.0
+      hooks:
+      - id: codespell
+        additional_dependencies:
+        - tomli
+    - repo: https://github.com/kynan/nbstripout
+      rev: 0.6.1
+      hooks:
+          - id: nbstripout
+            args: [--extra-keys=metadata.language_info.version metadata.kernelspec.name metadata.kernelspec.display_name]

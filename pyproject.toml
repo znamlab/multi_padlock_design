@@ -1,5 +1,5 @@
 [project]
-name = "multi_padlock_design"
+name = "multi-padlock-design"
 authors = [{name = "Alexander Becalick", email= "alexander.becalick@crick.ac.uk"}]
 description = "Common utility functions for analysis"
 readme = "README.md"
@@ -10,16 +10,11 @@ dependencies = [
     "numpy",
     "pandas",
     "tqdm",
+    "natsort",
     "znamutils @ git+ssh://git@github.com/znamlab/znamutils.git",
 ]
 
-# Install the standalone root-level config.py as a top-level module so
-# `import config` works after installation without manual PYTHONPATH edits.
-
 license = {text = "MIT"}
-
-[tool.setuptools]
-py-modules = ["config"]
 
 [build-system]
 requires = [
@@ -30,7 +25,7 @@ requires = [
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
-include = ["multi_padlock_design", "lib"]
+include = ["multi_padlock_design"]
 exclude = ["tests", "docs*"]
 
 [project.optional-dependencies]
@@ -46,6 +41,11 @@ dev = [
   "setuptools_scm",
 ]
 
+[project.scripts]
+mpd-download-databases = "multi_padlock_design.io.DownloadFromFTP:main"
+slurm-probe-design = "multi_padlock_design.cli.probe_design_parallel:main"
+probe-design = "multi_padlock_design.probedesign:main"
+
 [tool.pytest.ini_options]
 addopts = "--cov=multi_padlock_design"
 
@@ -59,8 +59,11 @@ line-length = 88
 [tool.ruff]
 line-length = 88
 exclude = ["__init__.py","build",".eggs"]
-select = ["I", "E", "F"]
 fix = true
+
+[tool.ruff.lint]
+select = ["I", "E", "F"]
+extend-per-file-ignores = {"notebooks/*.ipynb" = ["E501", "E712"]}
 
 [tool.tox]
 legacy_tox_ini = """
