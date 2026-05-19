@@ -292,7 +292,7 @@ def getdesigninput():
                 # Strip leading '>' (if present) and the suffix after the first dot
                 return h[1:].split(".", 1)[0]
 
-            for hit in hits:
+            for hit in hits[0]:
                 if len(hit) == 1:
                     # FIX: append the whole variant id (not characters of the string)
                     variants.append(variant_id_from_header(Headers[hit[0]]))

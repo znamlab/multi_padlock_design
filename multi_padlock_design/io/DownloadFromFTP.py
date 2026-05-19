@@ -411,7 +411,8 @@ def _latest_ensembl_release(ftp: FTP) -> str:
     if not releases:
         raise RuntimeError("Unable to locate Ensembl release directories")
     releases.sort(key=lambda value: int(value.split("-", 1)[1]))
-    latest = releases[-1]
+    #latest = releases[-1]
+    latest = "release-115"
     logger.info("Using Ensembl %s", latest)
     return latest
 

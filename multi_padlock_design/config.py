@@ -3,14 +3,17 @@ from pathlib import Path
 
 BASE_DIR = os.path.abspath("/nemo/lab/znamenskiyp/home/shared/resources/")
 # Resolve the repository root by walking up from this config module.
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 # Directory to save split input files into
 # e.g., an input file "Olfrs.fa" will be split into:
 #   /nemo/lab/znamenskiyp/scratch/Olfrs/<gene>.fasta
-split_input = Path("/nemo/lab/znamenskiyp/scratch")
+#split_input = Path("/nemo/lab/znamenskiyp/scratch")
+split_input = REPO_ROOT / "output"
 
 # Directory that stores per-job probe design outputs
-probe_output_root = Path("/nemo/lab/znamenskiyp/scratch")
+#probe_output_root = Path("/nemo/lab/znamenskiyp/scratch")
+probe_output_root = REPO_ROOT / "output"
 
 # maximum number of processes for parallel ClustalW
 max_MSA_processes = 32
@@ -63,7 +66,7 @@ probe_design_defaults = {
     "interval": 5,
     "tm_low": 60,
     "tm_high": 78,
-    "n_probes": 20,
+    "n_probes": 100,
 }
 
 # OLFR annotation file for custom olfr probe design
