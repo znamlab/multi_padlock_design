@@ -79,3 +79,11 @@ These parameters can be specified at run time if running locally, or can be set 
 A target sequence is considered sufficiently specific only if no sequence in the reference database exceeds:
 - A melting temperature of 37C for both the left **and** right padlock arm regions (assumed to be necessary for a ligation event to occur)
 - No gaps or mismatches within 3bp of the ligation site.
+
+## Per-probe identifiers
+By default all padlocks for a gene share an identical backbone. Optionally, each padlock within a gene can carry a short, error-robust identifier inserted between the barcode and the downstream linker, so individual probes of the same gene can be distinguished in the readout. Enable it in `multi_padlock_design/config.py`:
+- `use_padlock_identifiers = True`
+- `padlock_identifier_file` (default `multi_padlock_design/barcodes/padlock_identifiers_3bp.txt`)
+- `padlock_identifier_min_distance` (Hamming distance of the error-robust tier; default 2)
+
+Identifiers are applied to the final random-subset output (`6.ProbesRandomSubsetN=*`), which gains a `padlock_id` column, so a per-gene probe count must be set. The identifier file is an ordered, tiered list: the leading robust tier is error-detecting (3bp set: 16 codes) and ordered so the fewest bases distinguish the most probes, with a graceful distance-1 extension beyond it. Generate other sets with `python -m multi_padlock_design.barcodes.padlock_identifiers --length 4 --min-distance 3 --out ids.txt`. See [docs/input_format.md](docs/input_format.md) for details.

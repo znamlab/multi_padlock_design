@@ -86,27 +86,35 @@ def writeprobefile(
     armlength,
     fname,
     regions=None,
+    identifiers=None,
 ):
-    """Write file with original header, target sequence, Tm and final probe sequence"""
+    """Write file with original header, target sequence, Tm and final probe sequence.
+
+    When ``identifiers`` is provided (per-gene list of per-probe codes), an extra
+    ``padlock_id`` column is appended.
+    """
     t = dirnames[1].split("TempFolder")[1]
+    header_cols = "acronym,target,Tm,startpos,endpos,padlock,transcript_region"
+    if identifiers is not None:
+        header_cols += ",padlock_id"
     with open(os.path.join(dirnames[0], fname + t + ".csv"), "w") as f:
-        f.write("acronym,target,Tm,startpos,endpos,padlock,transcript_region\n")
+        f.write(header_cols + "\n")
         for i, header in enumerate(headers):
             f.write("%s\n" % header)
             idxsort = np.argsort(targetpos[i])
             for j in idxsort:
-                f.write(
-                    "%s,%s,%f,%d,%d,%s,%s\n"
-                    % (
-                        acronym[i],
-                        targets[i][j],
-                        Tm[i][j],
-                        targetpos[i][j] + 1,
-                        targetpos[i][j] + armlength * 2,
-                        probes[i][j],
-                        regions[i][j] if regions else "",
-                    )
+                row = "%s,%s,%f,%d,%d,%s,%s" % (
+                    acronym[i],
+                    targets[i][j],
+                    Tm[i][j],
+                    targetpos[i][j] + 1,
+                    targetpos[i][j] + armlength * 2,
+                    probes[i][j],
+                    regions[i][j] if regions else "",
                 )
+                if identifiers is not None:
+                    row += ",%s" % identifiers[i][j]
+                f.write(row + "\n")
             f.write("\n")
 
 

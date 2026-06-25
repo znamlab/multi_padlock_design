@@ -6,6 +6,7 @@ import glob
 import os
 import random
 import re
+import warnings
 from difflib import SequenceMatcher
 
 import pandas as pd
@@ -61,8 +62,37 @@ def correctpos(basepos, targets, targetpos, notMapped, mapTmlist, Tm, siteChoppe
     return targetsnew, targetposnew, notMappednew, Tmnew
 
 
-def assembleprobes(targets, genepars, armlength):
-    """Fill backbone sequences"""
+def _build_padlock(probe, armlength, linker1, barcode, linker2, identifier=""):
+    """Assemble one padlock string from a target sequence and backbone parts.
+
+    Structure (5'->3'):
+    ``armB + linker1 + barcode + identifier + linker2 + armA`` where
+    ``armB = probe[armlength:]`` and ``armA = probe[0:armlength]``. The per-probe
+    ``identifier`` sits between the barcode and the downstream linker; it is the
+    empty string when no identifier is used.
+    """
+    return (
+        probe[armlength:]
+        + linker1
+        + barcode
+        + identifier
+        + linker2
+        + probe[0:armlength]
+    )
+
+
+def assembleprobes(targets, genepars, armlength, identifiers=None):
+    """Fill backbone sequences.
+
+    Args:
+        targets (list): per-gene list of target sequences.
+        genepars (tuple): gene parameters; ``genepars[1]`` holds per-gene linkers.
+        armlength (int): padlock arm length.
+        identifiers (list, optional): per-gene list of per-probe identifier codes
+            (``identifiers[c][j]``). When provided, each code is inserted between
+            the barcode and the downstream linker. With ``None`` (default) the
+            assembled probes are unchanged.
+    """
     linkers = genepars[1]
     Padlocks = []
     for c, probes in enumerate(targets):
@@ -85,13 +115,66 @@ def assembleprobes(targets, genepars, armlength):
             linker2 = "CT"
 
         padlocks = []
-        for probe in probes:
+        for j, probe in enumerate(probes):
+            ident = identifiers[c][j] if identifiers is not None else ""
             padlocks.append(
-                probe[armlength:] + linker1 + barcode + linker2 + probe[0:armlength]
+                _build_padlock(probe, armlength, linker1, barcode, linker2, ident)
             )
 
         Padlocks.append(padlocks)
     return Padlocks
+
+
+def assign_identifiers(targets, codes, robust_size, headers=None):
+    """Assign a per-probe identifier to each probe within every gene.
+
+    For each gene, the first ``k`` codes (``k`` = number of probes) are assigned
+    in order. Genes with at most ``robust_size`` probes get error-robust codes;
+    genes that exceed it still get unique codes (distance-1) but a warning is
+    emitted. A gene with more probes than available codes raises ``ValueError``.
+
+    Args:
+        targets (list): per-gene list of final target/probe sequences.
+        codes (Sequence[str]): ordered identifier set (robust tier first).
+        robust_size (int): size of the leading error-robust tier.
+        headers (list, optional): per-gene names used in warning/error messages.
+
+    Returns:
+        list: per-gene list of per-probe identifier codes (``identifiers[c][j]``).
+    """
+
+    def name(i):
+        if headers is not None and i < len(headers):
+            return str(headers[i]).split()[0].lstrip(">")
+        return f"gene_{i}"
+
+    over_capacity = []
+    degraded = []
+    identifiers = []
+    for i, probes in enumerate(targets):
+        k = len(probes)
+        if k > len(codes):
+            over_capacity.append((name(i), k))
+        elif k > robust_size:
+            degraded.append((name(i), k))
+        identifiers.append(list(codes[:k]))
+
+    if over_capacity:
+        details = ", ".join(f"{n} ({k} probes)" for n, k in over_capacity)
+        raise ValueError(
+            f"{len(over_capacity)} gene(s) need more padlock identifiers than the "
+            f"{len(codes)} available: {details}. Lower the number of probes per "
+            f"gene or use a longer identifier set."
+        )
+    if degraded:
+        details = ", ".join(f"{n} ({k} probes)" for n, k in degraded)
+        warnings.warn(
+            f"{len(degraded)} gene(s) exceed the error-robust identifier tier of "
+            f"{robust_size}; probes beyond it use distance-1 identifiers (still "
+            f"unique but not error-robust): {details}.",
+            stacklevel=2,
+        )
+    return identifiers
 
 
 def removeunmapped(notmapped, targetpos, headers, targets, Tm, probes):

@@ -5,6 +5,7 @@ import sys
 import traceback
 
 import multi_padlock_design.config as config
+from multi_padlock_design.barcodes import padlock_identifiers
 from multi_padlock_design.blast import parblast, readblast
 from multi_padlock_design.io import checkinput, createoutput, formatrefseq
 from multi_padlock_design.select_probes import (
@@ -31,6 +32,15 @@ def main() -> int:
         # get keyboard inputs and prepare sequences
         designpars, outpars, genepars, designinput = checkinput.getdesigninput()
         # fmt = checkinput.checkformat(genepars[2])
+
+        # Per-probe identifiers are assigned to the final probe subset, which only
+        # exists when a per-gene probe count is given.
+        if config.use_padlock_identifiers and not len(designpars[5]):
+            raise ValueError(
+                "use_padlock_identifiers is enabled but no per-gene probe count "
+                "was given. Set 'Number of probes per gene' so identifiers can be "
+                "assigned to the final probe subset."
+            )
 
         # Tm screening
         Tm, siteChopped = screenseq.thresholdtm(
@@ -115,10 +125,29 @@ def main() -> int:
             sublist = finalizeprobes.selectprobes(
                 int(designpars[5]), finallist, genepars[2], designpars[1], outpars
             )
+
+            probes_out = sublist[0]
+            identifiers = None
+            if config.use_padlock_identifiers:
+                codes = padlock_identifiers.load_identifiers(
+                    config.padlock_identifier_file
+                )
+                robust = padlock_identifiers.validate_identifier_set(
+                    codes, config.padlock_identifier_min_distance
+                )
+                identifiers = finalizeprobes.assign_identifiers(
+                    sublist[3], codes, robust, headers=genepars[2]
+                )
+                # re-assemble selected probes with the per-probe identifier
+                # inserted between the barcode and the downstream linker
+                probes_out = finalizeprobes.assembleprobes(
+                    sublist[3], genepars, designpars[1], identifiers=identifiers
+                )
+
             createoutput.writeprobefile(
                 genepars[0],
                 genepars[2],
-                sublist[0],
+                probes_out,
                 sublist[1],
                 sublist[2],
                 sublist[3],
@@ -126,6 +155,7 @@ def main() -> int:
                 designpars[1],
                 "6.ProbesRandomSubsetN=" + designpars[5] + "_",
                 regions=sublist[4],
+                identifiers=identifiers,
             )
 
         print("All finished!")
